@@ -73,6 +73,10 @@ jobs:
           WATCHTRON_OTLP_ENDPOINT: ${{ secrets.otlp_endpoint }}
           WATCHTRON_TOKEN: ${{ secrets.token }}
         run: |
+          if [ -z "$WATCHTRON_OTLP_ENDPOINT" ]; then
+            echo "::notice::WATCHTRON_OTLP_ENDPOINT is not set — control plane not deployed yet. Skipping verify (not failing the deploy)."
+            exit 0
+          fi
           node prober/src/index.js \
             --service "${{ inputs.service }}" \
             ${{ inputs.base-url && format('--base-url {0}', inputs.base-url) || '' }} \
