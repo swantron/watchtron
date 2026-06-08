@@ -1,0 +1,100 @@
+# watchtron service registry
+# ---------------------------
+# One entry per fleet service. This is the single source of truth the prober,
+# the control plane, and the reusable verify workflow all read from.
+#
+# Fields:
+#   url               Base URL probed by synthetic traffic.
+#   criticalRoutes    Paths that MUST respond within SLO for a deploy to pass.
+#   slo
+#     availabilityPct Minimum % of probe requests that must succeed.
+#     p95LatencyMs    Max allowed p95 latency across critical-route probes.
+#   whiteBox          true  -> service emits server spans via @swantron/otel-bootstrap;
+#                            verify also asserts a server child span landed (real end-to-end).
+#                     false -> black-box only (static sites / unmodifiable upstreams).
+#   expectedServiceName  service.name the white-box server reports (only when whiteBox: true).
+#   mode              post-deploy -> verified by the repo's CI after each deploy.
+#                     schedule    -> verified on a cron (no deploy pipeline to hook).
+
+services:
+  tronswan:
+    url: https://tronswan.com
+    host: digitalocean-app-platform
+    stack: react-spa + express (esm)
+    whiteBox: true
+    expectedServiceName: tronswan-web
+    mode: post-deploy
+    criticalRoutes:
+      - /
+      - /projects
+      - /swantron
+      - /weathertron
+      - /api/health
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 1500
+
+  chomptron:
+    url: https://chomptron.com
+    host: gcp-cloud-run
+    stack: express + gemini (cjs)
+    whiteBox: true
+    expectedServiceName: chomptron-web
+    mode: post-deploy
+    criticalRoutes:
+      - /
+      - /health
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 2500
+
+  swantron:
+    url: https://swantron.com
+    host: github-pages
+    stack: hugo (static)
+    whiteBox: false
+    mode: post-deploy
+    criticalRoutes:
+      - /
+      - /api/posts/index.json
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 1200
+
+  mt:
+    url: https://mt.services
+    host: firebase-hosting
+    stack: static
+    whiteBox: false
+    mode: post-deploy
+    criticalRoutes:
+      - /
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 1200
+
+  wrenchtron:
+    url: https://wrenchtron.com
+    host: firebase-hosting
+    stack: next.js + firestore pwa (no server)
+    whiteBox: false
+    mode: post-deploy
+    criticalRoutes:
+      - /
+      - /demo
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 1800
+
+  jswan.dev:
+    url: https://jswan.dev
+    host: self-hosted
+    stack: atproto pds (upstream bluesky, do not fork)
+    whiteBox: false
+    mode: schedule
+    criticalRoutes:
+      - /
+      - /xrpc/_health
+    slo:
+      availabilityPct: 99
+      p95LatencyMs: 2000

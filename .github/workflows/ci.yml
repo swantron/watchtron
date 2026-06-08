@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install
+        run: npm install --workspaces --include-workspace-root
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: Test
+        run: npm test
+
+  publish-otel-bootstrap:
+    # Publish the shared white-box package to npm so consumer repos (tronswan,
+    # chomptron) can install it. Runs only on push to main, after tests pass,
+    # and is idempotent: it skips when this version is already on the registry.
+    #
+    # Auth is via npm OIDC Trusted Publishing -- no NPM_TOKEN secret. Requires a
+    # one-time setup on npm: publish v0.1.0 once manually, then configure the
+    # package's Trusted Publisher (GitHub Actions: swantron/watchtron, ci.yml).
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC: mints the short-lived publish credential + provenance
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Ensure npm supports trusted publishing (>= 11.5.1)
+        run: npm install -g npm@latest
+      - name: Check if version already published
+        id: check
+        working-directory: packages/otel-bootstrap
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION already on npm — skipping publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Will publish $NAME@$VERSION."
+          fi
+      - name: Publish (OIDC trusted publishing)
+        if: steps.check.outputs.published == 'false'
+        working-directory: packages/otel-bootstrap
+        run: npm publish --access public

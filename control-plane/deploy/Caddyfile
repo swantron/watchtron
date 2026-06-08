@@ -1,0 +1,8 @@
+# Caddy gives the control plane automatic HTTPS (Let's Encrypt) in front of the
+# loopback Node process. Point a DNS A record (e.g. watch.swantron.com) at the
+# e2-micro's external IP, then replace the hostname below.
+
+watch.swantron.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:4318
+}

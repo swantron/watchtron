@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>watchtron — fleet status</title>
+    <style>
+      :root {
+        --bg: #0b0f14;
+        --panel: #131a22;
+        --panel-2: #18222c;
+        --text: #e6edf3;
+        --muted: #8b98a5;
+        --green: #2ea043;
+        --red: #e5534b;
+        --grey: #6e7681;
+        --accent: #58a6ff;
+        --border: #222d38;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Consolas,
+          monospace;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 28px 24px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 0.5px;
+      }
+      h1 .tron {
+        color: var(--accent);
+      }
+      .sub {
+        color: var(--muted);
+        margin-top: 4px;
+        font-size: 13px;
+      }
+      main {
+        padding: 24px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px 18px;
+      }
+      .card h2 {
+        margin: 0 0 2px;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--grey);
+        display: inline-block;
+      }
+      .dot.pass {
+        background: var(--green);
+      }
+      .dot.fail {
+        background: var(--red);
+      }
+      .url {
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 8px 0;
+      }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 8px 0;
+      }
+      .tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      .tag.wb {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .signals {
+        display: flex;
+        gap: 18px;
+        margin-top: 10px;
+      }
+      .signal .k {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+      .signal .v {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .reasons {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--red);
+      }
+      .reasons li {
+        margin: 2px 0;
+      }
+      footer {
+        color: var(--muted);
+        text-align: center;
+        padding: 20px;
+        font-size: 12px;
+      }
+      .refresh {
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>watch<span class="tron">tron</span></h1>
+      <div class="sub">fleet observability paved road — synthetic traffic verified by OpenTelemetry</div>
+    </header>
+    <main>
+      <div class="refresh" id="refresh"></div>
+      <div class="grid" id="grid"></div>
+    </main>
+    <footer>watchtron · in-memory ephemeral telemetry · auto-refreshes every 15s</footer>
+
+    <script>
+      const fmtPct = (n) => (n == null ? '—' : n + '%');
+      const fmtMs = (n) => (n == null ? '—' : n + 'ms');
+
+      function card(s) {
+        const v = s.lastVerdict;
+        const cls = !v ? '' : v.pass ? 'pass' : 'fail';
+        const e2e = v && v.whiteBox ? (v.endToEnd ? ' · e2e ✓' : ' · e2e ✗') : '';
+        const reasons =
+          v && v.reasons && v.reasons.length
+            ? '<ul class="reasons">' + v.reasons.map((r) => '<li>' + r + '</li>').join('') + '</ul>'
+            : '';
+        return `
+          <div class="card">
+            <h2><span class="dot ${cls}"></span>${s.name}</h2>
+            <a class="url" href="${s.url}" target="_blank" rel="noreferrer">${s.url}</a>
+            <div class="tags">
+              <span class="tag">${s.host}</span>
+              <span class="tag ${s.whiteBox ? 'wb' : ''}">${s.whiteBox ? 'white-box' : 'black-box'}</span>
+              <span class="tag">${s.mode}</span>
+            </div>
+            <div class="meta">${v ? 'last verified ' + new Date(v.at).toLocaleString() + e2e : 'never verified'}</div>
+            <div class="signals">
+              <div class="signal"><div class="k">avail</div><div class="v">${v ? fmtPct(v.availabilityPct) : '—'}</div></div>
+              <div class="signal"><div class="k">p95</div><div class="v">${v ? fmtMs(v.p95LatencyMs) : '—'}</div></div>
+              <div class="signal"><div class="k">probes</div><div class="v">${v ? v.proberSpans : '—'}</div></div>
+            </div>
+            ${reasons}
+          </div>`;
+      }
+
+      async function load() {
+        try {
+          const res = await fetch('/api/status');
+          const data = await res.json();
+          document.getElementById('grid').innerHTML = data.services.map(card).join('');
+          document.getElementById('refresh').textContent =
+            `${data.services.length} services · ${data.buffer.total} spans buffered · updated ${new Date().toLocaleTimeString()}`;
+        } catch (e) {
+          document.getElementById('refresh').textContent = 'failed to load status: ' + e;
+        }
+      }
+      load();
+      setInterval(load, 15000);
+    </script>
+  </body>
+</html>

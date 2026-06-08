@@ -1,0 +1,21 @@
+[Unit]
+Description=watchtron control plane (OTLP receiver + verify API + dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=watchtron
+WorkingDirectory=/opt/watchtron
+# Listen only on loopback; Caddy terminates TLS and proxies to it.
+Environment=WATCHTRON_PORT=4318
+# Set the bearer token here (or via an EnvironmentFile). Generate: openssl rand -hex 32
+Environment=WATCHTRON_TOKEN=REPLACE_ME
+ExecStart=/usr/bin/node control-plane/src/server.js
+Restart=always
+RestartSec=3
+# Keep memory flat on an e2-micro.
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target

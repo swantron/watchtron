@@ -1,0 +1,49 @@
+{
+  "name": "@swantron/otel-bootstrap",
+  "version": "0.1.0",
+  "description": "Drop-in OpenTelemetry bootstrap + synthetic-run-id middleware for white-box watchtron services. Dual CJS + ESM.",
+  "license": "MIT",
+  "author": "Joe Swanson <joe@swantron.com>",
+  "homepage": "https://github.com/swantron/watchtron/tree/main/packages/otel-bootstrap",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/swantron/watchtron.git",
+    "directory": "packages/otel-bootstrap"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "observability",
+    "synthetic-monitoring",
+    "express",
+    "tracing",
+    "watchtron"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.cjs"
+    },
+    "./register": {
+      "import": "./register.mjs",
+      "require": "./register.cjs"
+    }
+  },
+  "files": [
+    "*.cjs",
+    "*.mjs",
+    "README.md"
+  ],
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
+    "@opentelemetry/instrumentation-express": "^0.55.0",
+    "@opentelemetry/instrumentation-http": "^0.205.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-node": "^0.205.0",
+    "@opentelemetry/semantic-conventions": "^1.30.0"
+  }
+}

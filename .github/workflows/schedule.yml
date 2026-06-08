@@ -1,0 +1,29 @@
+name: watchtron scheduled probes
+
+# Services with mode: schedule have no deploy pipeline to hook (e.g. jswan.dev,
+# an upstream Bluesky PDS). Probe them on a cron so the dashboard + badges stay
+# fresh and we catch silent outages.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # every 30 minutes
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [jswan.dev]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install --omit=dev --workspaces --include-workspace-root
+      - name: Probe + verify
+        env:
+          WATCHTRON_OTLP_ENDPOINT: ${{ secrets.WATCHTRON_OTLP_ENDPOINT }}
+          WATCHTRON_TOKEN: ${{ secrets.WATCHTRON_TOKEN }}
+        run: node prober/src/index.js --service "${{ matrix.service }}" --wait 30000 --verify

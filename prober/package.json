@@ -1,0 +1,17 @@
+{
+  "name": "@watchtron/prober",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "watchtron synthetic prober: drives golden-signal traffic, propagates W3C trace context, exports OTLP, scores against SLOs.",
+  "bin": {
+    "watchtron-probe": "src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test"
+  },
+  "dependencies": {
+    "@watchtron/registry": "*",
+    "undici": "^7.0.0"
+  }
+}

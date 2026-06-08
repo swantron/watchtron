@@ -1,0 +1,29 @@
+{
+  "name": "watchtron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fleet observability paved road: synthetic-traffic + OpenTelemetry verification that proves every deploy is live and serving real traffic.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "control-plane",
+    "prober"
+  ],
+  "scripts": {
+    "control-plane": "node --watch control-plane/src/server.js",
+    "control-plane:start": "node control-plane/src/server.js",
+    "probe": "node prober/src/index.js",
+    "test": "node --test \"packages/*/test/*.test.js\" \"prober/test/*.test.js\" \"control-plane/test/*.test.js\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.0.0",
+    "prettier": "^3.8.3"
+  }
+}
