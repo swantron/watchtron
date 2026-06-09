@@ -14,6 +14,21 @@ provider "google" {
   zone    = var.zone
 }
 
+# APIs the control plane + its CD path depend on. Managing project IAM needs
+# Cloud Resource Manager; IAP-tunneled SSH needs IAP + OS Login. Kept enabled on
+# destroy so tearing down watchtron doesn't disable shared project services.
+resource "google_project_service" "required" {
+  for_each = toset([
+    "cloudresourcemanager.googleapis.com",
+    "iap.googleapis.com",
+    "oslogin.googleapis.com",
+    "compute.googleapis.com",
+  ])
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
+}
+
 # Reserve a static external IP so the instance can be replaced (e.g. on a
 # startup-script change) without the DNS A record going stale.
 resource "google_compute_address" "watchtron" {
@@ -114,17 +129,19 @@ resource "google_compute_firewall" "iap_ssh" {
 # `ci_service_account` is resolved from the GOOGLE_CREDENTIALS key in CI; when
 # unset (e.g. a local plan) these bindings are skipped to avoid spurious diffs.
 resource "google_project_iam_member" "ci_iap_tunnel" {
-  count   = var.ci_service_account != "" ? 1 : 0
-  project = var.project_id
-  role    = "roles/iap.tunnelResourceAccessor"
-  member  = "serviceAccount:${var.ci_service_account}"
+  count      = var.ci_service_account != "" ? 1 : 0
+  project    = var.project_id
+  role       = "roles/iap.tunnelResourceAccessor"
+  member     = "serviceAccount:${var.ci_service_account}"
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_iam_member" "ci_os_admin_login" {
-  count   = var.ci_service_account != "" ? 1 : 0
-  project = var.project_id
-  role    = "roles/compute.osAdminLogin"
-  member  = "serviceAccount:${var.ci_service_account}"
+  count      = var.ci_service_account != "" ? 1 : 0
+  project    = var.project_id
+  role       = "roles/compute.osAdminLogin"
+  member     = "serviceAccount:${var.ci_service_account}"
+  depends_on = [google_project_service.required]
 }
 
 # Optional public SSH (off by default; prefer `gcloud compute ssh` / IAP).
