@@ -1,0 +1,103 @@
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["infra/**", ".github/workflows/terraform.yml"]
+
+env:
+  TF_VERSION: "1.14.8"
+  TF_VAR_project_id: chomptron
+  TF_VAR_watchtron_token: ${{ secrets.WATCHTRON_TOKEN }}
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  terraform:
+    name: ${{ github.event_name == 'push' && 'Apply' || 'Plan' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # needed to post plan output as PR comment
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # One-time adoption of resources that were created by hand before this
+      # module existed. Guarded by `state show`, so it's a no-op on every run
+      # after the first successful apply. Safe to delete this step once the
+      # control plane has been applied at least once.
+      - name: Adopt pre-existing resources (idempotent import)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          terraform state show google_compute_address.watchtron >/dev/null 2>&1 \
+            || terraform import google_compute_address.watchtron projects/chomptron/regions/us-central1/addresses/watchtron-ip
+          terraform state show google_compute_instance.watchtron >/dev/null 2>&1 \
+            || terraform import google_compute_instance.watchtron projects/chomptron/zones/us-central1-a/instances/watchtron
+          terraform state show google_compute_firewall.web >/dev/null 2>&1 \
+            || terraform import google_compute_firewall.web projects/chomptron/global/firewalls/watchtron-web
+
+      # On PRs: plan only, post result as a comment.
+      - name: Terraform Plan
+        if: github.event_name == 'pull_request'
+        id: plan
+        run: terraform plan -no-color
+        continue-on-error: true # let the comment step run even if plan fails
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const output = `#### Terraform Plan \`${{ steps.plan.outcome }}\`
+            <details><summary>Show Plan</summary>
+
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+
+            </details>`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail if Plan Failed
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'failure'
+        run: exit 1
+
+      # On merge to main: plan then apply.
+      - name: Terraform Plan (pre-apply)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan

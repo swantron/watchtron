@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars for local runs. In CI these come from TF_VAR_* env
+# (see .github/workflows/terraform.yml) so secrets stay out of the repo.
+
+project_id = "chomptron"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Public hostname (DNS A record points at the reserved static IP output).
+hostname = "watch.swantron.com"
+
+# Bearer token the control plane enforces. Generate: openssl rand -hex 32
+# In CI this is provided via TF_VAR_watchtron_token from the WATCHTRON_TOKEN secret.
+watchtron_token = "REPLACE_WITH_openssl_rand_hex_32"
+
+# Leave empty to keep port 22 closed (use `gcloud compute ssh`). Or lock to your IP:
+# ssh_source_ranges = ["203.0.113.4/32"]
+ssh_source_ranges = []

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Boot-time provisioning for the watchtron control plane (Debian 12 e2-micro).
+# Rendered by Terraform via templatefile(); runs as root on first boot.
+# Idempotent so instance restarts are safe.
+set -euo pipefail
+exec > /var/log/watchtron-startup.log 2>&1
+
+TOKEN="${watchtron_token}"
+HOST="${hostname}"
+REPO="${repo_url}"
+
+echo "==> [1/7] swapfile (insurance for 1GB RAM)"
+if ! swapon --show | grep -q /swapfile; then
+  fallocate -l 1G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+echo "==> [2/7] base packages + Node 24"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y curl git debian-keyring debian-archive-keyring apt-transport-https
+if ! command -v node >/dev/null 2>&1; then
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  apt-get install -y nodejs
+fi
+
+echo "==> [3/7] Caddy"
+if ! command -v caddy >/dev/null 2>&1; then
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    > /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -y
+  apt-get install -y caddy
+fi
+
+echo "==> [4/7] watchtron user + repo clone"
+useradd --system --home-dir /opt/watchtron --shell /usr/sbin/nologin watchtron 2>/dev/null || true
+if [ ! -d /opt/watchtron/.git ]; then
+  rm -rf /opt/watchtron
+  git clone --depth 1 "$REPO" /opt/watchtron
+else
+  git -C /opt/watchtron pull --ff-only || true
+fi
+chown -R watchtron:watchtron /opt/watchtron
+
+echo "==> [5/7] install runtime deps (control-plane + registry only)"
+sudo -u watchtron env HOME=/opt/watchtron npm install --omit=dev \
+  --prefix /opt/watchtron \
+  -w control-plane -w packages/registry --include-workspace-root
+
+echo "==> [6/7] systemd unit (token injected)"
+sed "s|REPLACE_ME|$TOKEN|" /opt/watchtron/control-plane/deploy/watchtron.service \
+  > /etc/systemd/system/watchtron.service
+systemctl daemon-reload
+systemctl enable --now watchtron
+
+echo "==> [7/7] Caddy reverse proxy (auto-HTTPS)"
+cat > /etc/caddy/Caddyfile <<EOF
+$HOST {
+	encode gzip
+	reverse_proxy 127.0.0.1:4318
+}
+EOF
+systemctl reload caddy || systemctl restart caddy
+
+echo "==> provisioning complete"

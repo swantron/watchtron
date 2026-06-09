@@ -1,0 +1,48 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm teardown of the watchtron control plane'
+        required: true
+
+env:
+  TF_VERSION: "1.14.8"
+  TF_VAR_project_id: chomptron
+  TF_VAR_watchtron_token: ${{ secrets.WATCHTRON_TOKEN }}
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  destroy:
+    name: Destroy
+    runs-on: ubuntu-latest
+    environment: destroy # optionally gate with required reviewers in repo settings
+
+    steps:
+      - name: Validate confirmation
+        if: github.event.inputs.confirm != 'destroy'
+        run: |
+          echo "Confirmation input was '${{ github.event.inputs.confirm }}', expected 'destroy'. Aborting."
+          exit 1
+
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
