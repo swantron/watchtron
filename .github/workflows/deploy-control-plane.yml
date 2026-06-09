@@ -1,0 +1,72 @@
+name: Deploy control plane
+
+# Ships registry/control-plane/package changes to the live e2-micro VM.
+#
+# The instance clones watchtron at provision time and otherwise never updates,
+# so this is the CD half of the control plane: on every push to main that
+# touches the running code, SSH in over an IAP tunnel (as the Terraform CI
+# service account, which Terraform grants iap.tunnelResourceAccessor +
+# compute.osAdminLogin), fast-forward the checkout to origin/main, reinstall
+# runtime deps, and restart the service.
+#
+# The in-memory span buffer is ephemeral by design, so the restart clearing it
+# is expected and harmless.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'registry/**'
+      - 'control-plane/**'
+      - 'packages/**'
+      - '.github/workflows/deploy-control-plane.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-control-plane
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: chomptron
+  GCE_ZONE: us-central1-a
+  GCE_INSTANCE: watchtron
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Roll out latest main to the control plane
+        run: |
+          set -euo pipefail
+          # gcloud compute ssh wants a key with no passphrase available locally.
+          ssh-keygen -t rsa -b 2048 -f "$HOME/.ssh/google_compute_engine" -N '' -q
+          gcloud compute ssh "$GCE_INSTANCE" \
+            --project "$GCP_PROJECT" \
+            --zone "$GCE_ZONE" \
+            --tunnel-through-iap \
+            --quiet \
+            --command '
+              set -euo pipefail
+              sudo git -C /opt/watchtron fetch --depth 1 origin main
+              sudo git -C /opt/watchtron reset --hard origin/main
+              sudo chown -R watchtron:watchtron /opt/watchtron
+              sudo -u watchtron env HOME=/opt/watchtron npm install --omit=dev \
+                --prefix /opt/watchtron \
+                -w control-plane -w packages/registry --include-workspace-root
+              sudo systemctl restart watchtron
+              sleep 3
+              systemctl is-active watchtron
+            '
+
+      - name: Smoke-test the public endpoint
+        run: curl -fsS --retry 5 --retry-delay 3 https://watch.swantron.com/healthz

@@ -60,6 +60,10 @@ resource "google_compute_instance" "watchtron" {
   }
 
   metadata = {
+    # OS Login lets the CI service account SSH in (via IAP) using IAM roles
+    # instead of project-wide SSH keys — that's how control-plane CD ships code.
+    enable-oslogin = "TRUE"
+
     startup-script = templatefile("${path.module}/startup.sh.tftpl", {
       watchtron_token = var.watchtron_token
       hostname        = var.hostname
@@ -89,7 +93,41 @@ resource "google_compute_firewall" "web" {
   target_tags   = ["http-server", "https-server"]
 }
 
-# Optional SSH (off by default; prefer `gcloud compute ssh` / IAP).
+# IAP-tunneled SSH (port 22 from Google's IAP range only). This is what the
+# control-plane CD workflow uses to `gcloud compute ssh --tunnel-through-iap`
+# and roll out registry/control-plane changes. No public SSH surface.
+resource "google_compute_firewall" "iap_ssh" {
+  name    = "${var.instance_name}-iap-ssh"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  # Google Identity-Aware Proxy TCP-forwarding source range.
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["http-server", "https-server"]
+}
+
+# IAM for the CI service account so it can SSH via IAP and `sudo` on the box.
+# `ci_service_account` is resolved from the GOOGLE_CREDENTIALS key in CI; when
+# unset (e.g. a local plan) these bindings are skipped to avoid spurious diffs.
+resource "google_project_iam_member" "ci_iap_tunnel" {
+  count   = var.ci_service_account != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = "serviceAccount:${var.ci_service_account}"
+}
+
+resource "google_project_iam_member" "ci_os_admin_login" {
+  count   = var.ci_service_account != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/compute.osAdminLogin"
+  member  = "serviceAccount:${var.ci_service_account}"
+}
+
+# Optional public SSH (off by default; prefer `gcloud compute ssh` / IAP).
 resource "google_compute_firewall" "ssh" {
   count   = length(var.ssh_source_ranges) > 0 ? 1 : 0
   name    = "${var.instance_name}-ssh"

@@ -50,3 +50,9 @@ variable "ssh_source_ranges" {
   type        = list(string)
   default     = []
 }
+
+variable "ci_service_account" {
+  description = "Email of the CI service account granted IAP SSH + osAdminLogin for control-plane CD. Resolved from GOOGLE_CREDENTIALS in CI; leave empty for local plans."
+  type        = string
+  default     = ""
+}

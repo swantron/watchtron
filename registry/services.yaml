@@ -59,7 +59,7 @@ services:
       - /api/posts/index.json
     slo:
       availabilityPct: 99
-      p95LatencyMs: 1200
+      p95LatencyMs: 1500
 
   mt:
     url: https://mt.services

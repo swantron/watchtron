@@ -33,6 +33,12 @@ jobs:
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
+      # The control-plane CD job SSHes in as this same SA, so grant it IAP +
+      # osAdminLogin via Terraform. Resolve its email from the key file the auth
+      # step wrote, so there's nothing extra to configure by hand.
+      - name: Resolve CI service account
+        run: echo "TF_VAR_ci_service_account=$(jq -r .client_email "$GOOGLE_APPLICATION_CREDENTIALS")" >> "$GITHUB_ENV"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
