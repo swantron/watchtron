@@ -27,6 +27,7 @@ keeps pointing at the right place across replacements.
 
    …and on the Terraform state bucket's project (`buildkite-infra-490603`):
    - `roles/storage.objectAdmin` on `gs://buildkite-infra-490603-tfstate`
+
 2. **`WATCHTRON_TOKEN` repo secret** — already set; reused as `TF_VAR_watchtron_token`.
 3. DNS A record `watch.swantron.com` → the static IP (see adoption below).
 
