@@ -12,8 +12,11 @@ gcloud compute instances create watchtron \
   --zone=us-central1-a \
   --image-family=debian-12 \
   --image-project=debian-cloud \
-  --boot-disk-size=30GB
+  --boot-disk-size=30GB \
+  --tags=http-server,https-server
 ```
+
+> The `--tags` must match the firewall rule's `--target-tags` below, or 80/443 stays closed.
 
 Reserve/note its external IP and point a DNS A record at it (e.g. `watch.swantron.com`).
 
