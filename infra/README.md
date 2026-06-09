@@ -7,12 +7,10 @@ Infrastructure-as-code for the watchtron control plane: a free-tier GCE
 
 ## What it manages
 
-| Resource | Purpose |
-|---|---|
-| `google_compute_address.watchtron` | Static external IP (DNS A record target — survives instance replacement) |
-| `google_compute_instance.watchtron` | `e2-micro` Debian 12; provisions Node 24 + Caddy + the service via `startup.sh.tftpl` |
-| `google_compute_firewall.web` | Ingress 80/443 (Node's `:4318` stays loopback-only) |
-| `google_compute_firewall.ssh` | Optional; only created when `ssh_source_ranges` is non-empty |
+- `google_compute_address.watchtron` — static external IP (DNS A record target; survives instance replacement).
+- `google_compute_instance.watchtron` — `e2-micro` Debian 12; provisions Node 24 + Caddy + the service via `startup.sh.tftpl`.
+- `google_compute_firewall.web` — ingress 80/443 (Node's `:4318` stays loopback-only).
+- `google_compute_firewall.ssh` — optional; only created when `ssh_source_ranges` is non-empty.
 
 `startup.sh.tftpl` is the source of truth for provisioning. Editing it changes
 the rendered script hash, which (via `replace_triggered_by`) replaces the
@@ -60,7 +58,7 @@ an idempotent "Adopt pre-existing resources" step that runs on `main`:
 terraform state show <addr> >/dev/null 2>&1 || terraform import <addr> <id>
 ```
 
-So the **first push of `infra/**` to `main`** imports the existing IP, instance,
+So the **first push** of `infra/**` to `main` imports the existing IP, instance,
 and firewall into the GCS state before `apply`, then converges them. The
 `state show` guard makes it a no-op on every subsequent run, and the step is
 safe to delete once the control plane has applied cleanly once.
