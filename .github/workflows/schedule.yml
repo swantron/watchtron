@@ -1,8 +1,9 @@
 name: watchtron scheduled probes
 
-# Services with mode: schedule have no deploy pipeline to hook (e.g. jswan.dev,
-# an upstream Bluesky PDS). Probe them on a cron so the dashboard + badges stay
-# fresh and we catch silent outages.
+# Probe the whole fleet on a cron so the dashboard + badges stay fresh between
+# deploys (the control plane's span buffer is ephemeral, so a restart clears it)
+# and so we catch silent outages — including schedule-only services like
+# jswan.dev that have no deploy pipeline to hook.
 
 on:
   schedule:
@@ -15,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [jswan.dev]
+        service: [tronswan, chomptron, swantron, mt, wrenchtron, jswan.dev]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5

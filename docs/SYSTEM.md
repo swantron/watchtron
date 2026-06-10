@@ -59,8 +59,11 @@ only, so it can match the prober's client trace against the origin's server span
 - every `criticalRoutes` entry was probed
 - (white-box) a correlated server span landed → `endToEnd: true`
 
-The span buffer is **ephemeral by design** — a control-plane restart clears it,
-which is fine because verification is per-run and short-lived.
+The span buffer is **ephemeral by design** — a control-plane restart (deploy,
+reboot) clears it, which is fine because verification is per-run and short-lived.
+The visible cost is that the dashboard shows "never verified" for a service until
+something probes it again; `schedule.yml` re-probes the whole fleet every 30 min
+to backfill, and each service also refills on its next deploy.
 
 ---
 
@@ -134,14 +137,14 @@ Only Caddy (80/443) is exposed publicly; the Node process is loopback-only.
 
 ### watchtron (hub)
 
-| Workflow                   | Trigger                                                                 | Does                                                                                              |
-| -------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ci.yml`                   | push/PR `main`                                                          | lint + format check + test; on `main` push, publish `@swantron/otel-bootstrap` (OIDC, idempotent) |
-| `terraform.yml`            | push/PR on `infra/**`                                                   | PR → plan (commented); `main` → apply. Resolves `TF_VAR_ci_service_account` from the SA key       |
-| `deploy-control-plane.yml` | push `main` on `registry/**`,`control-plane/**`,`packages/**`; dispatch | SSH via IAP, `git reset --hard origin/main`, reinstall deps, restart service, hit `/healthz`      |
-| `schedule.yml`             | cron `*/30 * * * *`; dispatch                                           | probe + verify `schedule`-mode services (jswan.dev)                                               |
-| `verify.yml`               | `workflow_call` (reusable)                                              | run the prober with `--verify` against a service; no-ops if `WATCHTRON_OTLP_ENDPOINT` unset       |
-| `terraform-destroy.yml`    | manual dispatch                                                         | `terraform destroy` of the control-plane infra                                                    |
+| Workflow                   | Trigger                                                                 | Does                                                                                                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ci.yml`                   | push/PR `main`                                                          | lint + format check + test; on `main` push, publish `@swantron/otel-bootstrap` (OIDC, idempotent)                                                                        |
+| `terraform.yml`            | push/PR on `infra/**`                                                   | PR → plan (commented); `main` → apply. Resolves `TF_VAR_ci_service_account` from the SA key                                                                              |
+| `deploy-control-plane.yml` | push `main` on `registry/**`,`control-plane/**`,`packages/**`; dispatch | SSH via IAP, `git reset --hard origin/main`, reinstall deps, restart service, hit `/healthz`                                                                             |
+| `schedule.yml`             | cron `*/30 * * * *`; dispatch                                           | probe + verify the **whole fleet** every 30 min — keeps the dashboard/badges fresh between deploys (buffer is ephemeral) and covers `schedule`-only services (jswan.dev) |
+| `verify.yml`               | `workflow_call` (reusable)                                              | run the prober with `--verify` against a service; no-ops if `WATCHTRON_OTLP_ENDPOINT` unset                                                                              |
+| `terraform-destroy.yml`    | manual dispatch                                                         | `terraform destroy` of the control-plane infra                                                                                                                           |
 
 ### Consumer repos
 
@@ -240,18 +243,19 @@ the systemd unit) and redeploy white-box services.
 
 ## 10. Troubleshooting catalog
 
-| Symptom                                                       | Cause                                                                 | Fix                                                                                    |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Prober CI: `ECONNREFUSED …:4318`                              | `WATCHTRON_OTLP_ENDPOINT` unset / control plane not up                | set the secret; the guard now exits 0 when unset                                       |
-| TF: `Error 403 … cloudresourcemanager … SERVICE_DISABLED`     | Cloud Resource Manager API off                                        | enable the API (or grant SA `serviceUsageAdmin` so TF enables it)                      |
-| TF: `AUTH_PERMISSION_DENIED … Enable Project Service`         | CI SA lacks `serviceusage.services.enable`                            | grant `roles/serviceusage.serviceUsageAdmin` to `watchtron-tf`                         |
-| TF: `Create IAM Members … setIamPolicy` denied                | CI SA lacks project IAM admin                                         | grant `roles/resourcemanager.projectIamAdmin` to `watchtron-tf`                        |
-| Control-plane deploy: IAP `4033: 'not authorized'`            | missing `iap.tunnelResourceAccessor` and/or IAP API off               | apply Terraform (creates the binding + firewall); ensure IAP API enabled               |
-| `endToEnd: false` for chomptron despite instrumentation       | Cloud Run CPU throttling delays the OTel batch flush                  | increase prober `--wait`/`--requests` (we use 25s/10); or `--no-cpu-throttling`        |
-| Registry/SLO change not reflected on the live dashboard       | control plane hadn't pulled the new code                              | now automatic via `deploy-control-plane.yml`; or dispatch it manually                  |
-| Local `EADDRINUSE` on control-plane restart                   | a stale node process holds `:4318`                                    | `pkill -f control-plane/src/server.js` then restart                                    |
-| `npm publish` → `E403 … Two-factor authentication … required` | 2FA on the npm account                                                | use OIDC Trusted Publishing in CI; for the one-time publish use a granular write token |
-| White-box service shows black-box / no `endToEnd`             | runtime env vars not set, or `WATCHTRON_SERVICE_NAME` ≠ registry name | set the three env vars; match `expectedServiceName`                                    |
+| Symptom                                                        | Cause                                                                 | Fix                                                                                    |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Prober CI: `ECONNREFUSED …:4318`                               | `WATCHTRON_OTLP_ENDPOINT` unset / control plane not up                | set the secret; the guard now exits 0 when unset                                       |
+| TF: `Error 403 … cloudresourcemanager … SERVICE_DISABLED`      | Cloud Resource Manager API off                                        | enable the API (or grant SA `serviceUsageAdmin` so TF enables it)                      |
+| TF: `AUTH_PERMISSION_DENIED … Enable Project Service`          | CI SA lacks `serviceusage.services.enable`                            | grant `roles/serviceusage.serviceUsageAdmin` to `watchtron-tf`                         |
+| TF: `Create IAM Members … setIamPolicy` denied                 | CI SA lacks project IAM admin                                         | grant `roles/resourcemanager.projectIamAdmin` to `watchtron-tf`                        |
+| Control-plane deploy: IAP `4033: 'not authorized'`             | missing `iap.tunnelResourceAccessor` and/or IAP API off               | apply Terraform (creates the binding + firewall); ensure IAP API enabled               |
+| `endToEnd: false` for chomptron despite instrumentation        | Cloud Run CPU throttling delays the OTel batch flush                  | increase prober `--wait`/`--requests` (we use 25s/10); or `--no-cpu-throttling`        |
+| Registry/SLO change not reflected on the live dashboard        | control plane hadn't pulled the new code                              | now automatic via `deploy-control-plane.yml`; or dispatch it manually                  |
+| Dashboard shows "never verified" after a control-plane restart | ephemeral buffer cleared; nothing has re-probed yet                   | wait for the `schedule.yml` 30-min cron to backfill, or `gh workflow run schedule.yml` |
+| Local `EADDRINUSE` on control-plane restart                    | a stale node process holds `:4318`                                    | `pkill -f control-plane/src/server.js` then restart                                    |
+| `npm publish` → `E403 … Two-factor authentication … required`  | 2FA on the npm account                                                | use OIDC Trusted Publishing in CI; for the one-time publish use a granular write token |
+| White-box service shows black-box / no `endToEnd`              | runtime env vars not set, or `WATCHTRON_SERVICE_NAME` ≠ registry name | set the three env vars; match `expectedServiceName`                                    |
 
 ---
 
