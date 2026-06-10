@@ -23,7 +23,7 @@ function spanPath(s) {
 
 /**
  * @param {import('./otlp.js').SpanRecord[]} spans Spans matching this runId.
- * @param {object} service Registry entry (must include criticalRoutes, slo, whiteBox).
+ * @param {object} service Registry entry (must include criticalRoutes, healthGate, whiteBox).
  * @param {string} runId
  */
 export function verifyRun(spans, service, runId) {
@@ -73,12 +73,14 @@ export function verifyRun(spans, service, runId) {
     endToEnd = serverSpans.some((s) => proberTraceIds.has(s.traceId));
   }
 
-  // Apply SLO gates.
-  if (availabilityPct < service.slo.availabilityPct) {
-    reasons.push(`availability ${availabilityPct.toFixed(1)}% < SLO ${service.slo.availabilityPct}%`);
+  // Apply the deploy health gate.
+  if (availabilityPct < service.healthGate.availabilityPct) {
+    reasons.push(
+      `availability ${availabilityPct.toFixed(1)}% < gate ${service.healthGate.availabilityPct}%`
+    );
   }
-  if (p95LatencyMs > service.slo.p95LatencyMs) {
-    reasons.push(`p95 latency ${p95LatencyMs}ms > SLO ${service.slo.p95LatencyMs}ms`);
+  if (p95LatencyMs > service.healthGate.p95LatencyMs) {
+    reasons.push(`p95 latency ${p95LatencyMs}ms > gate ${service.healthGate.p95LatencyMs}ms`);
   }
   if (routesMissing.length > 0) {
     reasons.push(`critical routes never probed: ${routesMissing.join(', ')}`);

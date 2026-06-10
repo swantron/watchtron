@@ -9,3 +9,6 @@ coverage/
 *.local
 .cache/
 tmp/
+
+# Durable verdict store (survives control-plane restarts; never committed)
+control-plane/state/

@@ -7,7 +7,7 @@ const tronswan = {
   whiteBox: true,
   expectedServiceName: 'tronswan-web',
   criticalRoutes: ['/', '/projects'],
-  slo: { availabilityPct: 99, p95LatencyMs: 1500 },
+  healthGate: { availabilityPct: 99, p95LatencyMs: 1500 },
 };
 
 function proberSpan({ route = '/', status = 200, durationMs = 100, traceId = 'a'.repeat(32) }) {
@@ -39,7 +39,7 @@ function serverSpan({ traceId = 'a'.repeat(32) }) {
   };
 }
 
-test('passes when SLOs met, all routes covered, and server span correlates', () => {
+test('passes when health gate met, all routes covered, and server span correlates', () => {
   const spans = [
     proberSpan({ route: '/', traceId: 't1' }),
     proberSpan({ route: '/projects', traceId: 't2' }),
@@ -58,7 +58,7 @@ test('fails when a critical route was never probed', () => {
   assert.ok(v.reasons.some((r) => r.includes('/projects')));
 });
 
-test('fails when availability below SLO', () => {
+test('fails when availability below the gate', () => {
   const spans = [
     proberSpan({ route: '/', status: 500, traceId: 't1' }),
     proberSpan({ route: '/projects', traceId: 't2' }),
@@ -90,7 +90,7 @@ test('black-box service does not require a server span', () => {
     name: 'mt',
     whiteBox: false,
     criticalRoutes: ['/'],
-    slo: { availabilityPct: 99, p95LatencyMs: 1200 },
+    healthGate: { availabilityPct: 99, p95LatencyMs: 1200 },
   };
   const v = verifyRun([proberSpan({ route: '/', traceId: 't1' })], mt, 'run-1');
   assert.equal(v.pass, true);

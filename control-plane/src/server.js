@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadRegistry } from '@watchtron/registry';
 import { SpanBuffer } from './buffer.js';
+import { VerdictStore } from './verdict-store.js';
 import { decodeOtlpJson } from './otlp.js';
 import { verifyRun } from './verify.js';
 
@@ -10,11 +11,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.WATCHTRON_PORT || 4318);
 const TOKEN = process.env.WATCHTRON_TOKEN || '';
-// Keep a verdict per service so the dashboard + badges can show "last result"
-// without re-querying. Map<serviceName, verdict>.
-const lastVerdicts = new Map();
+// Verdicts back the dashboard + badges and must survive a restart, so they are
+// mirrored to disk. Default lives at control-plane/state/ (gitignored, and the
+// deploy does `git reset --hard` not `git clean`, so it survives redeploys).
+const STATE_FILE = process.env.WATCHTRON_STATE_FILE || join(here, '..', 'state', 'verdicts.json');
 
-export function createApp({ buffer = new SpanBuffer(), registry = loadRegistry() } = {}) {
+export function createApp({
+  buffer = new SpanBuffer(),
+  registry = loadRegistry(),
+  verdicts = new VerdictStore({ file: STATE_FILE }),
+} = {}) {
   const app = express();
   // OTLP/HTTP JSON payloads can be chunky; allow a generous body.
   app.use(express.json({ limit: '8mb' }));
@@ -65,14 +71,14 @@ export function createApp({ buffer = new SpanBuffer(), registry = loadRegistry()
     // would drop the server spans and break end-to-end correlation.
     const spans = buffer.query({ runId: String(runId) });
     const verdict = verifyRun(spans, { name: serviceName, ...service }, String(runId));
-    lastVerdicts.set(serviceName, { ...verdict, at: new Date().toISOString() });
+    verdicts.set(serviceName, { ...verdict, at: new Date().toISOString() });
     res.status(verdict.pass ? 200 : 422).json(verdict);
   });
 
   // --- Shields-compatible badge endpoint ---------------------------------
   // https://img.shields.io/endpoint?url=<this>
   app.get('/badge/:service', (req, res) => {
-    const v = lastVerdicts.get(req.params.service);
+    const v = verdicts.get(req.params.service);
     let message = 'unknown';
     let color = 'lightgrey';
     if (v) {
@@ -85,7 +91,7 @@ export function createApp({ buffer = new SpanBuffer(), registry = loadRegistry()
   // --- Fleet status (JSON for the dashboard) -----------------------------
   app.get('/api/status', (_req, res) => {
     const services = registry.list().map((name) => {
-      const v = lastVerdicts.get(name) || null;
+      const v = verdicts.get(name);
       return { name, ...registry.services[name], lastVerdict: v };
     });
     res.json({ services, buffer: buffer.stats() });

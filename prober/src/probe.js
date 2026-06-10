@@ -80,7 +80,7 @@ async function probeOnce({ service, runId, baseUrl, route, timeoutMs }) {
 /**
  * Drive synthetic traffic across all critical routes of a service.
  * @param {object} args
- * @param {object} args.service   registry entry (with name, url, criticalRoutes, slo)
+ * @param {object} args.service   registry entry (with name, url, criticalRoutes, healthGate)
  * @param {string} args.runId
  * @param {string} [args.baseUrl] override (defaults to service.url)
  * @param {number} [args.requestsPerRoute]

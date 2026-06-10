@@ -5,8 +5,10 @@
 #
 # Fields:
 #   url               Base URL probed by synthetic traffic.
-#   criticalRoutes    Paths that MUST respond within SLO for a deploy to pass.
-#   slo
+#   criticalRoutes    Paths that MUST pass the health gate for a deploy to ship.
+#   healthGate        Post-deploy gate thresholds. NOTE: scored over a small
+#                     synthetic burst (requests x criticalRoutes), so this is a
+#                     deploy health check, not a windowed production SLO.
 #     availabilityPct Minimum % of probe requests that must succeed.
 #     p95LatencyMs    Max allowed p95 latency across critical-route probes.
 #   whiteBox          true  -> service emits server spans via @swantron/otel-bootstrap;
@@ -30,7 +32,7 @@ services:
       - /swantron
       - /weathertron
       - /api/health
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 1500
 
@@ -44,7 +46,7 @@ services:
     criticalRoutes:
       - /
       - /health
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 2500
 
@@ -57,7 +59,7 @@ services:
     criticalRoutes:
       - /
       - /api/posts/index.json
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 1500
 
@@ -69,7 +71,7 @@ services:
     mode: post-deploy
     criticalRoutes:
       - /
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 1200
 
@@ -82,7 +84,7 @@ services:
     criticalRoutes:
       - /
       - /demo
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 1800
 
@@ -95,6 +97,6 @@ services:
     criticalRoutes:
       - /
       - /xrpc/_health
-    slo:
+    healthGate:
       availabilityPct: 99
       p95LatencyMs: 2000

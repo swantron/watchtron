@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // (handy for tests and ad-hoc fleets).
 const DEFAULT_REGISTRY_PATH = process.env.WATCHTRON_REGISTRY || resolve(here, '../../registry/services.yaml');
 
-const REQUIRED_FIELDS = ['url', 'whiteBox', 'mode', 'criticalRoutes', 'slo'];
+const REQUIRED_FIELDS = ['url', 'whiteBox', 'mode', 'criticalRoutes', 'healthGate'];
 const VALID_MODES = new Set(['post-deploy', 'schedule']);
 
 /**
@@ -37,9 +37,11 @@ function validateService(name, svc) {
       `registry: white-box service "${name}" must declare expectedServiceName (the service.name its server reports)`
     );
   }
-  const { slo } = svc;
-  if (typeof slo.availabilityPct !== 'number' || typeof slo.p95LatencyMs !== 'number') {
-    throw new Error(`registry: service "${name}" slo must define numeric availabilityPct and p95LatencyMs`);
+  const { healthGate } = svc;
+  if (typeof healthGate.availabilityPct !== 'number' || typeof healthGate.p95LatencyMs !== 'number') {
+    throw new Error(
+      `registry: service "${name}" healthGate must define numeric availabilityPct and p95LatencyMs`
+    );
   }
 }
 

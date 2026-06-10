@@ -37,6 +37,11 @@ on:
         required: false
         type: number
         default: 30000
+      strict:
+        description: Block the deploy if the control plane is unreachable (default fail-open)
+        required: false
+        type: boolean
+        default: false
       ref:
         description: watchtron ref to run the prober from
         required: false
@@ -72,6 +77,7 @@ jobs:
         env:
           WATCHTRON_OTLP_ENDPOINT: ${{ secrets.otlp_endpoint }}
           WATCHTRON_TOKEN: ${{ secrets.token }}
+          WATCHTRON_STRICT: ${{ inputs.strict }}
         run: |
           if [ -z "$WATCHTRON_OTLP_ENDPOINT" ]; then
             echo "::notice::WATCHTRON_OTLP_ENDPOINT is not set — control plane not deployed yet. Skipping verify (not failing the deploy)."

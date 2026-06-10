@@ -13,13 +13,13 @@ troubleshooting catalog of every failure mode hit so far.
 
 On every deploy, watchtron drives synthetic golden-signal traffic at the live
 service and proves — via OpenTelemetry — that the deploy is actually serving real
-requests within SLO. If the telemetry never lands in the control plane, the
-deploy fails.
+requests within its deploy health gate. If the telemetry never lands in the
+control plane, the deploy fails.
 
 Three moving parts:
 
-- **Prober** — generates tagged synthetic traffic with `undici`, scores SLOs,
-  exports its client spans as OTLP/HTTP JSON.
+- **Prober** — generates tagged synthetic traffic with `undici`, scores the
+  deploy health gate, exports its client spans as OTLP/HTTP JSON.
 - **Control plane** — an always-on GCE `e2-micro` that receives OTLP, buffers
   spans in memory, runs `/verify`, and serves the dashboard + status badges.
 - **`@swantron/otel-bootstrap`** — a drop-in white-box instrumentation package
@@ -41,7 +41,7 @@ Three moving parts:
         └─ poll /verify?runId ───────▶  CONTROL PLANE (watch.swantron.com)
                                          ├─ OTLP receiver  (:4318, loopback)
                                          ├─ ephemeral ring buffer (in-memory)
-                                         ├─ /verify   (SLO + trace correlation)
+                                         ├─ /verify   (health gate + trace correlation)
                                          ├─ /badge/:service, /api/status
                                          └─ dashboard at /
 ```
@@ -54,16 +54,29 @@ only, so it can match the prober's client trace against the origin's server span
 
 **Verdict.** A run passes when, for that `runId`:
 
-- availability ≥ `slo.availabilityPct`
-- p95 latency ≤ `slo.p95LatencyMs`
+- availability ≥ `healthGate.availabilityPct`
+- p95 latency ≤ `healthGate.p95LatencyMs`
 - every `criticalRoutes` entry was probed
 - (white-box) a correlated server span landed → `endToEnd: true`
 
+This gate is scored over a small synthetic burst (`requests` × `criticalRoutes`)
+fired right after deploy — a post-deploy **health gate**, deliberately not a
+windowed production SLO.
+
+**Reachability vs. failure.** If the control plane itself can't be reached (so
+telemetry can neither be exported nor verified), that's a watchtron outage, not a
+service failure — the prober warns and exits 0, so the deploy is **not** blocked.
+Pass `strict: true` to `verify.yml` (or `WATCHTRON_STRICT=true`) to block on
+outage instead. A reachable control plane returning a failing verdict still
+blocks as normal.
+
 The span buffer is **ephemeral by design** — a control-plane restart (deploy,
 reboot) clears it, which is fine because verification is per-run and short-lived.
-The visible cost is that the dashboard shows "never verified" for a service until
-something probes it again; `schedule.yml` re-probes the whole fleet every 30 min
-to backfill, and each service also refills on its next deploy.
+The **last verdict per service is persisted to disk**
+(`control-plane/state/verdicts.json`, gitignored, override via
+`WATCHTRON_STATE_FILE`), so badges and the dashboard survive restarts instead of
+resetting to "unknown" on every `deploy-control-plane` run. `schedule.yml` still
+re-probes the whole fleet every 30 min to catch drift and silent outages.
 
 ---
 
@@ -72,7 +85,7 @@ to backfill, and each service also refills on its next deploy.
 Single source of truth: [`registry/services.yaml`](../registry/services.yaml).
 The prober, control plane, and verify workflow all read it.
 
-| Service    | URL            | Host                      | Box       | Mode        | p95 SLO |
+| Service    | URL            | Host                      | Box       | Mode        | p95 gate |
 | ---------- | -------------- | ------------------------- | --------- | ----------- | ------- |
 | tronswan   | tronswan.com   | DigitalOcean App Platform | white-box | post-deploy | 1500 ms |
 | chomptron  | chomptron.com  | GCP Cloud Run             | white-box | post-deploy | 2500 ms |
@@ -227,8 +240,8 @@ These can't be self-served by the CI SA — they grant the CI SA its powers.
    middleware, set the three runtime env vars.
 5. Add a status badge to the repo README.
 
-**Change an SLO or registry field** — edit `registry/services.yaml`, push to
-`main`. `deploy-control-plane.yml` pulls + restarts the control plane.
+**Change a health gate or registry field** — edit `registry/services.yaml`, push
+to `main`. `deploy-control-plane.yml` pulls + restarts the control plane.
 
 **Ship control-plane code** — push to `main`; the same workflow rolls it out.
 Manual: `gh workflow run deploy-control-plane.yml -R swantron/watchtron`.
@@ -251,7 +264,7 @@ the systemd unit) and redeploy white-box services.
 | TF: `Create IAM Members … setIamPolicy` denied                 | CI SA lacks project IAM admin                                         | grant `roles/resourcemanager.projectIamAdmin` to `watchtron-tf`                        |
 | Control-plane deploy: IAP `4033: 'not authorized'`             | missing `iap.tunnelResourceAccessor` and/or IAP API off               | apply Terraform (creates the binding + firewall); ensure IAP API enabled               |
 | `endToEnd: false` for chomptron despite instrumentation        | Cloud Run CPU throttling delays the OTel batch flush                  | increase prober `--wait`/`--requests` (we use 25s/10); or `--no-cpu-throttling`        |
-| Registry/SLO change not reflected on the live dashboard        | control plane hadn't pulled the new code                              | now automatic via `deploy-control-plane.yml`; or dispatch it manually                  |
+| Registry/gate change not reflected on the live dashboard       | control plane hadn't pulled the new code                              | now automatic via `deploy-control-plane.yml`; or dispatch it manually                  |
 | Dashboard shows "never verified" after a control-plane restart | ephemeral buffer cleared; nothing has re-probed yet                   | wait for the `schedule.yml` 30-min cron to backfill, or `gh workflow run schedule.yml` |
 | Local `EADDRINUSE` on control-plane restart                    | a stale node process holds `:4318`                                    | `pkill -f control-plane/src/server.js` then restart                                    |
 | `npm publish` → `E403 … Two-factor authentication … required`  | 2FA on the npm account                                                | use OIDC Trusted Publishing in CI; for the one-time publish use a granular write token |

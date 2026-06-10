@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "watchtron synthetic prober: drives golden-signal traffic, propagates W3C trace context, exports OTLP, scores against SLOs.",
+  "description": "watchtron synthetic prober: drives golden-signal traffic, propagates W3C trace context, exports OTLP, scores against the deploy health gate.",
   "bin": {
     "watchtron-probe": "src/index.js"
   },

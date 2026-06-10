@@ -2,8 +2,8 @@
 
 **A fleet observability paved road.** On every deploy, watchtron drives synthetic
 golden-signal traffic at the live service and proves — via OpenTelemetry — that
-the deploy is actually serving real requests within SLO. If the telemetry never
-lands, the deploy fails.
+the deploy is actually serving real requests within its deploy health gate. If
+the telemetry never lands, the deploy fails.
 
 It is a single reusable GitHub Actions workflow + one shared instrumentation
 package + one tiny control plane that onboards any service in minutes, across a
@@ -14,7 +14,7 @@ flowchart TD
   subgraph cp [Control plane - GCE e2-micro always-free VM]
     Sink["OTLP/HTTP JSON receiver"]
     Buf["ephemeral span ring buffer"]
-    Verify["/verify (SLO + correlation)"]
+    Verify["/verify (health gate + correlation)"]
     Dash["dashboard + /badge"]
     Reg["service registry"]
     Sink --> Buf --> Verify
@@ -51,10 +51,10 @@ verifies all of them from one paved road:
 
 | Path                                                           | What                                                            |
 | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`registry/services.yaml`](registry/services.yaml)             | Declarative fleet: URLs, critical routes, SLOs, white-box flags |
+| [`registry/services.yaml`](registry/services.yaml)             | Declarative fleet: URLs, critical routes, health gates, white-box flags |
 | [`packages/registry`](packages/registry)                       | Loader + validator for the registry                             |
 | [`control-plane`](control-plane)                               | OTLP receiver, ephemeral buffer, `/verify`, `/badge`, dashboard |
-| [`prober`](prober)                                             | Synthetic traffic generator + SLO scoring + OTLP export         |
+| [`prober`](prober)                                             | Synthetic traffic generator + health-gate scoring + OTLP export |
 | [`packages/otel-bootstrap`](packages/otel-bootstrap)           | Dual CJS+ESM white-box OpenTelemetry bootstrap                  |
 | [`.github/workflows/verify.yml`](.github/workflows/verify.yml) | The reusable `workflow_call` the fleet invokes                  |
 
@@ -96,14 +96,20 @@ Open <http://localhost:4318> for the fleet dashboard.
    ![watchtron](https://img.shields.io/endpoint?url=https://watch.swantron.com/badge/my-service)
    ```
 
-## SLO gates
+## Deploy health gate
 
 A deploy passes only when, for that run id:
 
-- availability ≥ `slo.availabilityPct`
-- p95 latency ≤ `slo.p95LatencyMs`
+- availability ≥ `healthGate.availabilityPct`
+- p95 latency ≤ `healthGate.p95LatencyMs`
 - every `criticalRoutes` entry was probed
 - (white-box) a server span correlated with the prober's trace
+
+These are scored over a small synthetic burst (`requests` × `criticalRoutes`)
+fired immediately after deploy — a post-deploy **health gate**, not a windowed
+production SLO. If the control plane itself is unreachable, the deploy is **not**
+blocked (it's a watchtron outage, not a service failure); pass `strict: true` to
+the verify workflow to block on outage instead.
 
 Deployed on a GCE `e2-micro` always-free VM — see
 [`control-plane/deploy`](control-plane/deploy/README.md).
