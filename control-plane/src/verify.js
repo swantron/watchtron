@@ -25,8 +25,10 @@ function spanPath(s) {
  * @param {import('./otlp.js').SpanRecord[]} spans Spans matching this runId.
  * @param {object} service Registry entry (must include criticalRoutes, healthGate, whiteBox).
  * @param {string} runId
+ * @param {string|null} [expectVersion] If set (and the origin reports a real version),
+ *   assert the correlated server span is running this version (proves the NEW deploy is live).
  */
-export function verifyRun(spans, service, runId) {
+export function verifyRun(spans, service, runId, expectVersion = null) {
   const reasons = [];
   const proberSpans = spans.filter((s) => s.role === 'prober');
 
@@ -42,6 +44,9 @@ export function verifyRun(spans, service, runId) {
       routesMissing: service.criticalRoutes,
       whiteBox: !!service.whiteBox,
       endToEnd: service.whiteBox ? false : null,
+      expectedVersion: expectVersion || null,
+      servedVersion: null,
+      versionMatch: null,
       reasons: [
         'no prober spans received for this run id (did traffic + OTLP export reach the control plane?)',
       ],
@@ -65,12 +70,30 @@ export function verifyRun(spans, service, runId) {
   // span -> the request truly reached the instrumented origin (not just an edge
   // cache / CDN). SpanKind 2 == SERVER.
   let endToEnd = null;
+  const proberTraceIds = new Set(proberSpans.map((s) => s.traceId));
   if (service.whiteBox) {
-    const proberTraceIds = new Set(proberSpans.map((s) => s.traceId));
     const serverSpans = spans.filter(
       (s) => s.role === 'server' || s.kind === 2 || s.serviceName === service.expectedServiceName
     );
     endToEnd = serverSpans.some((s) => proberTraceIds.has(s.traceId));
+  }
+
+  // Version assertion (white-box only): prove the CORRELATED server span is
+  // running the version this deploy expects -- i.e. the new code is actually
+  // serving, not a stale instance still answering. Stays a no-op unless an
+  // expected version was supplied AND the origin reports a real (non-default)
+  // version, so it never trips a service that isn't wired to report one yet.
+  let servedVersion = null;
+  let versionMatch = null;
+  if (service.whiteBox && expectVersion) {
+    const correlatedVersions = spans
+      .filter((s) => (s.role === 'server' || s.kind === 2) && proberTraceIds.has(s.traceId))
+      .map((s) => s.serviceVersion)
+      .filter((v) => v && v !== '0.0.0');
+    if (correlatedVersions.length > 0) {
+      servedVersion = correlatedVersions[0];
+      versionMatch = correlatedVersions.includes(expectVersion);
+    }
   }
 
   // Apply the deploy health gate.
@@ -88,6 +111,11 @@ export function verifyRun(spans, service, runId) {
       `white-box: no server span (service.name=${service.expectedServiceName}) correlated with prober traffic -- request may not have reached the instrumented origin`
     );
   }
+  if (versionMatch === false) {
+    reasons.push(
+      `served version ${servedVersion} != expected ${expectVersion} -- a stale instance may still be live (new deploy not fully rolled out?)`
+    );
+  }
 
   return {
     service: service.name,
@@ -100,6 +128,9 @@ export function verifyRun(spans, service, runId) {
     routesMissing,
     whiteBox: !!service.whiteBox,
     endToEnd,
+    expectedVersion: expectVersion || null,
+    servedVersion,
+    versionMatch,
     reasons,
   };
 }

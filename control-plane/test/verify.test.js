@@ -25,13 +25,14 @@ function proberSpan({ route = '/', status = 200, durationMs = 100, traceId = 'a'
   };
 }
 
-function serverSpan({ traceId = 'a'.repeat(32) }) {
+function serverSpan({ traceId = 'a'.repeat(32), version } = {}) {
   return {
     traceId,
     spanId: 'c'.repeat(16),
     role: 'server',
     kind: 2,
     serviceName: 'tronswan-web',
+    serviceVersion: version,
     statusCode: 200,
     durationMs: 50,
     attrs: { 'synthetic.run_id': 'run-1' },
@@ -95,4 +96,53 @@ test('black-box service does not require a server span', () => {
   const v = verifyRun([proberSpan({ route: '/', traceId: 't1' })], mt, 'run-1');
   assert.equal(v.pass, true);
   assert.equal(v.endToEnd, null);
+});
+
+function healthySpans(version) {
+  return [
+    proberSpan({ route: '/', traceId: 't1' }),
+    proberSpan({ route: '/projects', traceId: 't2' }),
+    serverSpan({ traceId: 't1', version }),
+  ];
+}
+
+test('version assertion passes when the correlated server span matches', () => {
+  const v = verifyRun(healthySpans('sha-abc'), tronswan, 'run-1', 'sha-abc');
+  assert.equal(v.pass, true);
+  assert.equal(v.versionMatch, true);
+  assert.equal(v.servedVersion, 'sha-abc');
+});
+
+test('version assertion fails on a mismatch (stale instance still serving)', () => {
+  const v = verifyRun(healthySpans('sha-old'), tronswan, 'run-1', 'sha-new');
+  assert.equal(v.pass, false);
+  assert.equal(v.versionMatch, false);
+  assert.equal(v.servedVersion, 'sha-old');
+  assert.ok(v.reasons.some((r) => r.includes('served version')));
+});
+
+test('version assertion is skipped when the origin reports only the default version', () => {
+  const v = verifyRun(healthySpans('0.0.0'), tronswan, 'run-1', 'sha-new');
+  assert.equal(v.pass, true);
+  assert.equal(v.versionMatch, null);
+  assert.equal(v.servedVersion, null);
+});
+
+test('version assertion is a no-op when no expected version is supplied', () => {
+  const v = verifyRun(healthySpans('sha-abc'), tronswan, 'run-1');
+  assert.equal(v.pass, true);
+  assert.equal(v.versionMatch, null);
+  assert.equal(v.expectedVersion, null);
+});
+
+test('version assertion does not apply to black-box services', () => {
+  const mt = {
+    name: 'mt',
+    whiteBox: false,
+    criticalRoutes: ['/'],
+    healthGate: { availabilityPct: 99, p95LatencyMs: 1200 },
+  };
+  const v = verifyRun([proberSpan({ route: '/', traceId: 't1' })], mt, 'run-1', 'sha-new');
+  assert.equal(v.pass, true);
+  assert.equal(v.versionMatch, null);
 });

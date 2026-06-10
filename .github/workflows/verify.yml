@@ -42,6 +42,11 @@ on:
         required: false
         type: boolean
         default: false
+      version:
+        description: Assert the white-box origin serves this version (e.g. the deploy's git SHA)
+        required: false
+        type: string
+        default: ''
       ref:
         description: watchtron ref to run the prober from
         required: false
@@ -88,4 +93,5 @@ jobs:
             ${{ inputs.base-url && format('--base-url {0}', inputs.base-url) || '' }} \
             ${{ inputs.requests && format('--requests {0}', inputs.requests) || '' }} \
             ${{ inputs.wait && format('--wait {0}', inputs.wait) || '' }} \
+            ${{ inputs.version && format('--expect-version {0}', inputs.version) || '' }} \
             --verify

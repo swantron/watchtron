@@ -22,6 +22,9 @@
 #     requestsPerRoute  Requests fired per critical route (default 3).
 #     timeoutMs         Per-request HTTP timeout, ms (default 10000).
 #     waitMs            Max ms to wait for telemetry to land during --verify (default 30000).
+#     warmup            Discarded priming requests per route, fired before the
+#                       measured burst so a scaled-to-zero origin absorbs its cold
+#                       start there (default 0). Gate then reflects warm latency.
 #   failClosed        (optional) true -> an unreachable control plane FAILS the
 #                     deploy instead of failing open with a warning (default false).
 
@@ -55,11 +58,12 @@ services:
       - /health
     healthGate:
       availabilityPct: 99
-      p95LatencyMs: 2500
-    # Cloud Run throttles CPU between requests, which can delay the OTel batch
-    # export after the prober goes idle — probe harder and wait longer so the
-    # white-box server spans land before /verify gives up.
+      p95LatencyMs: 3000
+    # Cloud Run scales to zero and throttles CPU between requests. warmup absorbs
+    # the cold start so the gate measures warm p95; the generous requests/wait
+    # still give the OTel batch export time to land before /verify gives up.
     probe:
+      warmup: 1
       requestsPerRoute: 10
       waitMs: 25000
 

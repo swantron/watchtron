@@ -56,7 +56,7 @@ export function createApp({
   // --- Verify a synthetic run --------------------------------------------
   // GET /verify?service=tronswan&runId=...  -> verdict (pass/fail + signals)
   app.get('/verify', requireToken, (req, res) => {
-    const { service: serviceName, runId } = req.query;
+    const { service: serviceName, runId, version } = req.query;
     if (!serviceName || !runId) {
       return res.status(400).json({ error: 'service and runId query params are required' });
     }
@@ -69,7 +69,12 @@ export function createApp({
     // spans (service.name = expectedServiceName). Filtering by service name here
     // would drop the server spans and break end-to-end correlation.
     const spans = buffer.query({ runId: String(runId) });
-    const verdict = verifyRun(spans, { name: serviceName, ...service }, String(runId));
+    const verdict = verifyRun(
+      spans,
+      { name: serviceName, ...service },
+      String(runId),
+      version ? String(version) : null
+    );
     verdicts.set(serviceName, { ...verdict, at: new Date().toISOString() });
     res.status(verdict.pass ? 200 : 422).json(verdict);
   });

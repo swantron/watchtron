@@ -58,6 +58,11 @@ only, so it can match the prober's client trace against the origin's server span
 - p95 latency ≤ `healthGate.p95LatencyMs`
 - every `criticalRoutes` entry was probed
 - (white-box) a correlated server span landed → `endToEnd: true`
+- (white-box, optional) if a `version` was supplied, the correlated server span
+  reports it → `versionMatch: true` (proves the **new build** is serving, not a
+  stale instance). Skipped unless an expected version is passed _and_ the origin
+  reports a real, non-`0.0.0` `service.version`, so it never trips a service
+  that isn't wired to report one yet.
 
 This gate is scored over a small synthetic burst (`requests` × `criticalRoutes`)
 fired right after deploy — a post-deploy **health gate**, deliberately not a
@@ -101,10 +106,14 @@ The prober, control plane, and verify workflow all read it.
 - **schedule** = no deploy pipeline, so probed on a cron from watchtron itself.
 
 Per-service tuning also lives here (the registry is the single source of truth):
-an optional `probe` block (`requestsPerRoute`, `timeoutMs`, `waitMs`) and a
-`failClosed` flag. The prober resolves each as **explicit CLI flag > registry
-value > global default**, so e.g. chomptron's Cloud-Run-friendly `requests: 10 /
-wait: 25s` lives in `services.yaml`, not in chomptron's workflow.
+an optional `probe` block (`requestsPerRoute`, `timeoutMs`, `waitMs`, `warmup`)
+and a `failClosed` flag. The prober resolves each as **explicit CLI flag >
+registry value > global default**, so e.g. chomptron's Cloud-Run-friendly
+`warmup: 1 / requests: 10 / wait: 25s` lives in `services.yaml`, not in
+chomptron's workflow. `warmup` fires N discarded priming requests per route
+before the measured burst, so a scaled-to-zero origin absorbs its cold start
+there and the gate measures **warm** p95 (chomptron's gate is 3000 ms on that
+basis).
 
 ---
 
@@ -200,13 +209,21 @@ reachable control plane returning a failing verdict still fails the gate.
 
 ### White-box runtime env (the actual app processes)
 
-| Service   | Set where                                 | Vars                                                                                |
-| --------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| tronswan  | DO App Platform (via `watchtron-env.yml`) | `WATCHTRON_OTLP_ENDPOINT`, `WATCHTRON_TOKEN`, `WATCHTRON_SERVICE_NAME=tronswan-web` |
-| chomptron | Cloud Run (via `deploy.sh`)               | same three; token from Secret Manager `watchtron-token`, name `chomptron-web`       |
+| Service   | Set where                                 | Vars                                                                                                                    |
+| --------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| tronswan  | DO App Platform (via `watchtron-env.yml`) | `WATCHTRON_OTLP_ENDPOINT`, `WATCHTRON_TOKEN`, `WATCHTRON_SERVICE_NAME=tronswan-web`                                     |
+| chomptron | Cloud Run (via `deploy.sh`)               | same three + `WATCHTRON_SERVICE_VERSION=$GITHUB_SHA`; token from Secret Manager `watchtron-token`, name `chomptron-web` |
 
 `WATCHTRON_SERVICE_NAME` must equal the registry's `expectedServiceName`, or
 end-to-end correlation won't match.
+
+**Version assertion** is wired for chomptron: `deploy.sh` stamps the deploy's git
+SHA as `WATCHTRON_SERVICE_VERSION` and `ci.yml` passes the same SHA to `verify.yml`
+as `version:`, so the control plane confirms the correlated server span is serving
+that exact build. **tronswan defers it** — DO auto-deploys on push (CI only polls),
+so a per-deploy SHA would require patching the app spec, which itself rolls a
+second deployment; until that's addressed tronswan reports the default `0.0.0` and
+the version check is simply skipped.
 
 ### Control-plane process env
 

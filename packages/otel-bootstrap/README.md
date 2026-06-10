@@ -47,11 +47,12 @@ After that, all future version bumps publish automatically via CI with zero secr
 Nothing happens unless `WATCHTRON_OTLP_ENDPOINT` is set, so local dev and tests
 are unaffected. Required runtime env on the deployed service:
 
-| Env                       | Value                                         |
-| ------------------------- | --------------------------------------------- |
-| `WATCHTRON_OTLP_ENDPOINT` | `https://watch.swantron.com`                  |
-| `WATCHTRON_TOKEN`         | the control-plane bearer token                |
-| `WATCHTRON_SERVICE_NAME`  | must equal the registry `expectedServiceName` |
+| Env                         | Value                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WATCHTRON_OTLP_ENDPOINT`   | `https://watch.swantron.com`                                                                                                                                          |
+| `WATCHTRON_TOKEN`           | the control-plane bearer token                                                                                                                                        |
+| `WATCHTRON_SERVICE_NAME`    | must equal the registry `expectedServiceName`                                                                                                                         |
+| `WATCHTRON_SERVICE_VERSION` | _(optional)_ the deploy's git SHA — stamped as `service.version` so verify can assert the new build is actually serving. Defaults to `0.0.0` (version check skipped). |
 
 ## ESM service (tronswan)
 

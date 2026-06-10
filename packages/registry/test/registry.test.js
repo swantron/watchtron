@@ -54,12 +54,14 @@ test('accepts optional probe tuning and failClosed', () => {
       requestsPerRoute: 10
       timeoutMs: 5000
       waitMs: 25000
+      warmup: 1
 `
   );
   const svc = getService('demo', file);
   assert.equal(svc.failClosed, true);
   assert.equal(svc.probe.requestsPerRoute, 10);
   assert.equal(svc.probe.waitMs, 25000);
+  assert.equal(svc.probe.warmup, 1);
 });
 
 test('rejects a non-numeric probe field', () => {
@@ -80,4 +82,6 @@ test('chomptron centralizes its Cloud Run probe tuning in the registry', () => {
   const chomptron = getService('chomptron');
   assert.equal(chomptron.probe.requestsPerRoute, 10);
   assert.equal(chomptron.probe.waitMs, 25000);
+  assert.equal(chomptron.probe.warmup, 1);
+  assert.equal(chomptron.healthGate.p95LatencyMs, 3000);
 });

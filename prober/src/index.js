@@ -16,9 +16,11 @@ Options:
   --service <name>     Registry service to probe (required)
   --base-url <url>     Override the service's registry URL (e.g. a preview deploy)
   --requests <n>       Requests per critical route (overrides the registry; default 3)
+  --warmup <n>         Discarded priming requests per route before the measured burst (overrides the registry; default 0)
   --endpoint <url>     Control-plane OTLP endpoint (default $WATCHTRON_OTLP_ENDPOINT or http://localhost:4318)
   --token <token>      Bearer token (default $WATCHTRON_TOKEN)
   --verify             After export, poll /verify and gate exit code on the verdict
+  --expect-version <v> Assert the white-box origin serves this version (e.g. the deploy's git SHA)
   --wait <ms>          Max time to wait for telemetry during --verify (overrides the registry; default 30000)
   --strict             Treat an unreachable control plane as a failure (also set per-service via registry failClosed)
   --no-export          Probe only; print local signals and skip OTLP export
@@ -38,9 +40,11 @@ function parse() {
       service: { type: 'string' },
       'base-url': { type: 'string' },
       requests: { type: 'string' },
+      warmup: { type: 'string' },
       endpoint: { type: 'string' },
       token: { type: 'string' },
       verify: { type: 'boolean', default: false },
+      'expect-version': { type: 'string' },
       wait: { type: 'string' },
       strict: { type: 'boolean', default: false },
       'no-export': { type: 'boolean', default: false },
@@ -87,8 +91,9 @@ function exitUnreachable({ serviceName, strict, reason }) {
   process.exit(strict ? 1 : 0);
 }
 
-async function pollVerify({ endpoint, service, runId, token, waitMs }) {
-  const url = `${endpoint.replace(/\/$/, '')}/verify?service=${encodeURIComponent(service)}&runId=${encodeURIComponent(runId)}`;
+async function pollVerify({ endpoint, service, runId, token, waitMs, expectVersion }) {
+  let url = `${endpoint.replace(/\/$/, '')}/verify?service=${encodeURIComponent(service)}&runId=${encodeURIComponent(runId)}`;
+  if (expectVersion) url += `&version=${encodeURIComponent(expectVersion)}`;
   const headers = token ? { authorization: `Bearer ${token}` } : {};
   const deadline = Date.now() + waitMs;
   let last = null;
@@ -115,6 +120,7 @@ async function main() {
   const token = args.token || process.env.WATCHTRON_TOKEN || '';
   // Precedence for tuning: explicit CLI flag > registry per-service value > default.
   const requestsPerRoute = args.requests ? Number(args.requests) : (service.probe?.requestsPerRoute ?? 3);
+  const warmupPerRoute = args.warmup ? Number(args.warmup) : (service.probe?.warmup ?? 0);
   const waitMs = args.wait ? Number(args.wait) : (service.probe?.waitMs ?? 30_000);
   const timeoutMs = service.probe?.timeoutMs ?? 10_000;
   const baseUrl = args['base-url'] || service.url;
@@ -127,6 +133,7 @@ async function main() {
     runId,
     baseUrl,
     requestsPerRoute,
+    warmupPerRoute,
     timeoutMs,
   });
 
@@ -159,9 +166,18 @@ async function main() {
     process.exit(0);
   }
 
+  const expectVersion = args['expect-version'] || '';
+
   let verdict;
   try {
-    verdict = await pollVerify({ endpoint, service: service.name, runId, token, waitMs });
+    verdict = await pollVerify({
+      endpoint,
+      service: service.name,
+      runId,
+      token,
+      waitMs,
+      expectVersion,
+    });
   } catch (err) {
     exitUnreachable({
       serviceName: service.name,
@@ -185,6 +201,13 @@ async function main() {
   ghSummary(`- routes covered: ${verdict?.routesCovered?.join(', ') || '—'}`);
   if (service.whiteBox)
     ghSummary(`- end-to-end (server span correlated): ${verdict?.endToEnd ? 'yes' : 'no'}`);
+  if (expectVersion) {
+    const v =
+      verdict?.versionMatch === null
+        ? `expected ${expectVersion}, origin reported no version (assertion skipped)`
+        : `served ${verdict?.servedVersion} ${verdict?.versionMatch ? '==' : '!='} expected ${expectVersion}`;
+    ghSummary(`- version: ${v}`);
+  }
   if (verdict?.reasons?.length) {
     ghSummary('');
     ghSummary('**failures:**');

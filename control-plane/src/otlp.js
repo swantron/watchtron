@@ -16,6 +16,7 @@
  * @property {number} endNano
  * @property {number} durationMs
  * @property {string} serviceName     from resource attribute service.name
+ * @property {string} [serviceVersion] from resource attribute service.version
  * @property {string} [watchtronService] from span attribute watchtron.service
  * @property {string} [role]          watchtron.role: "prober" | "server"
  * @property {number|null} statusCode HTTP status if present
@@ -55,6 +56,7 @@ export function decodeOtlpJson(body) {
   for (const rs of resourceSpans) {
     const resourceAttrs = attrsToObject(rs.resource?.attributes);
     const serviceName = resourceAttrs['service.name'] || 'unknown';
+    const serviceVersion = resourceAttrs['service.version'];
     for (const ss of rs.scopeSpans || []) {
       for (const span of ss.spans || []) {
         const attrs = attrsToObject(span.attributes);
@@ -77,6 +79,7 @@ export function decodeOtlpJson(body) {
           endNano,
           durationMs: endNano > startNano ? (endNano - startNano) / 1e6 : 0,
           serviceName,
+          serviceVersion,
           watchtronService: attrs['watchtron.service'],
           role: attrs['watchtron.role'],
           statusCode,

@@ -78,6 +78,32 @@ async function probeOnce({ service, runId, baseUrl, route, timeoutMs }) {
 }
 
 /**
+ * Best-effort warm-up hit. Fired (and discarded) before the measured burst so a
+ * scaled-to-zero origin (e.g. Cloud Run) absorbs its cold start here instead of
+ * in the timed requests. Deliberately carries no traceparent / run id so it
+ * never correlates into a verdict; errors are swallowed.
+ *
+ * @param {object} args
+ * @param {string} args.baseUrl
+ * @param {string} args.route
+ * @param {number} args.timeoutMs
+ */
+async function warmUp({ baseUrl, route, timeoutMs }) {
+  try {
+    const url = new URL(route, baseUrl);
+    const res = await request(url.href, {
+      method: 'GET',
+      headers: { 'user-agent': USER_AGENT, 'x-synthetic': 'true', 'x-synthetic-warmup': 'true' },
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+    });
+    await res.body.text();
+  } catch {
+    // Warm-up is best-effort; a failure just means the measured burst eats the cold start.
+  }
+}
+
+/**
  * Drive synthetic traffic across all critical routes of a service.
  * @param {object} args
  * @param {object} args.service   registry entry (with name, url, criticalRoutes, healthGate)
@@ -85,6 +111,7 @@ async function probeOnce({ service, runId, baseUrl, route, timeoutMs }) {
  * @param {string} [args.baseUrl] override (defaults to service.url)
  * @param {number} [args.requestsPerRoute]
  * @param {number} [args.timeoutMs]
+ * @param {number} [args.warmupPerRoute] discarded priming requests per route, fired first
  */
 export async function probeService({
   service,
@@ -92,7 +119,20 @@ export async function probeService({
   baseUrl = service.url,
   requestsPerRoute = 3,
   timeoutMs = 10_000,
+  warmupPerRoute = 0,
 }) {
+  // Prime first (and wait): once the origin is warm, the measured burst reflects
+  // steady-state latency rather than a one-off cold start.
+  if (warmupPerRoute > 0) {
+    const warm = [];
+    for (const route of service.criticalRoutes) {
+      for (let i = 0; i < warmupPerRoute; i++) {
+        warm.push(warmUp({ baseUrl, route, timeoutMs }));
+      }
+    }
+    await Promise.all(warm);
+  }
+
   const tasks = [];
   for (const route of service.criticalRoutes) {
     for (let i = 0; i < requestsPerRoute; i++) {
