@@ -86,13 +86,13 @@ Single source of truth: [`registry/services.yaml`](../registry/services.yaml).
 The prober, control plane, and verify workflow all read it.
 
 | Service    | URL            | Host                      | Box       | Mode        | p95 gate |
-| ---------- | -------------- | ------------------------- | --------- | ----------- | ------- |
-| tronswan   | tronswan.com   | DigitalOcean App Platform | white-box | post-deploy | 1500 ms |
-| chomptron  | chomptron.com  | GCP Cloud Run             | white-box | post-deploy | 2500 ms |
-| swantron   | swantron.com   | GitHub Pages (Hugo)       | black-box | post-deploy | 1500 ms |
-| mt         | mt.services    | Firebase Hosting          | black-box | post-deploy | 1200 ms |
-| wrenchtron | wrenchtron.com | Firebase Hosting          | black-box | post-deploy | 1800 ms |
-| jswan.dev  | jswan.dev      | self-hosted atproto PDS   | black-box | schedule    | 2000 ms |
+| ---------- | -------------- | ------------------------- | --------- | ----------- | -------- |
+| tronswan   | tronswan.com   | DigitalOcean App Platform | white-box | post-deploy | 1500 ms  |
+| chomptron  | chomptron.com  | GCP Cloud Run             | white-box | post-deploy | 2500 ms  |
+| swantron   | swantron.com   | GitHub Pages (Hugo)       | black-box | post-deploy | 1500 ms  |
+| mt         | mt.services    | Firebase Hosting          | black-box | post-deploy | 1200 ms  |
+| wrenchtron | wrenchtron.com | Firebase Hosting          | black-box | post-deploy | 1800 ms  |
+| jswan.dev  | jswan.dev      | self-hosted atproto PDS   | black-box | schedule    | 2000 ms  |
 
 - **white-box** = origin emits server spans (`@swantron/otel-bootstrap`); verify
   also asserts end-to-end correlation.

@@ -75,9 +75,7 @@ export function verifyRun(spans, service, runId) {
 
   // Apply the deploy health gate.
   if (availabilityPct < service.healthGate.availabilityPct) {
-    reasons.push(
-      `availability ${availabilityPct.toFixed(1)}% < gate ${service.healthGate.availabilityPct}%`
-    );
+    reasons.push(`availability ${availabilityPct.toFixed(1)}% < gate ${service.healthGate.availabilityPct}%`);
   }
   if (p95LatencyMs > service.healthGate.p95LatencyMs) {
     reasons.push(`p95 latency ${p95LatencyMs}ms > gate ${service.healthGate.p95LatencyMs}ms`);

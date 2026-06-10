@@ -49,14 +49,14 @@ verifies all of them from one paved road:
 
 ## Layout
 
-| Path                                                           | What                                                            |
-| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| Path                                                           | What                                                                    |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | [`registry/services.yaml`](registry/services.yaml)             | Declarative fleet: URLs, critical routes, health gates, white-box flags |
-| [`packages/registry`](packages/registry)                       | Loader + validator for the registry                             |
-| [`control-plane`](control-plane)                               | OTLP receiver, ephemeral buffer, `/verify`, `/badge`, dashboard |
-| [`prober`](prober)                                             | Synthetic traffic generator + health-gate scoring + OTLP export |
-| [`packages/otel-bootstrap`](packages/otel-bootstrap)           | Dual CJS+ESM white-box OpenTelemetry bootstrap                  |
-| [`.github/workflows/verify.yml`](.github/workflows/verify.yml) | The reusable `workflow_call` the fleet invokes                  |
+| [`packages/registry`](packages/registry)                       | Loader + validator for the registry                                     |
+| [`control-plane`](control-plane)                               | OTLP receiver, ephemeral buffer, `/verify`, `/badge`, dashboard         |
+| [`prober`](prober)                                             | Synthetic traffic generator + health-gate scoring + OTLP export         |
+| [`packages/otel-bootstrap`](packages/otel-bootstrap)           | Dual CJS+ESM white-box OpenTelemetry bootstrap                          |
+| [`.github/workflows/verify.yml`](.github/workflows/verify.yml) | The reusable `workflow_call` the fleet invokes                          |
 
 ## Quickstart (local, no backend account)
 

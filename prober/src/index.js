@@ -138,7 +138,11 @@ async function main() {
   try {
     await exportSpans(endpoint, spans, token);
   } catch (err) {
-    exitUnreachable({ serviceName: service.name, strict, reason: `OTLP export failed (${err?.message || err})` });
+    exitUnreachable({
+      serviceName: service.name,
+      strict,
+      reason: `OTLP export failed (${err?.message || err})`,
+    });
   }
 
   console.log(`[watchtron] exported ${spans.length} spans to ${endpoint}`);
@@ -151,7 +155,11 @@ async function main() {
   try {
     verdict = await pollVerify({ endpoint, service: service.name, runId, token, waitMs });
   } catch (err) {
-    exitUnreachable({ serviceName: service.name, strict, reason: `verify request failed (${err?.message || err})` });
+    exitUnreachable({
+      serviceName: service.name,
+      strict,
+      reason: `verify request failed (${err?.message || err})`,
+    });
   }
 
   console.log('[watchtron] verdict:', JSON.stringify(verdict, null, 2));
@@ -160,8 +168,12 @@ async function main() {
   const icon = verdict?.pass ? '✅' : '❌';
   ghSummary(`## watchtron verify — ${service.name} ${icon}`);
   ghSummary('');
-  ghSummary(`- availability: **${verdict?.availabilityPct ?? '—'}%** (gate ${service.healthGate.availabilityPct}%)`);
-  ghSummary(`- p95 latency: **${verdict?.p95LatencyMs ?? '—'}ms** (gate ${service.healthGate.p95LatencyMs}ms)`);
+  ghSummary(
+    `- availability: **${verdict?.availabilityPct ?? '—'}%** (gate ${service.healthGate.availabilityPct}%)`
+  );
+  ghSummary(
+    `- p95 latency: **${verdict?.p95LatencyMs ?? '—'}ms** (gate ${service.healthGate.p95LatencyMs}ms)`
+  );
   ghSummary(`- routes covered: ${verdict?.routesCovered?.join(', ') || '—'}`);
   if (service.whiteBox)
     ghSummary(`- end-to-end (server span correlated): ${verdict?.endToEnd ? 'yes' : 'no'}`);
