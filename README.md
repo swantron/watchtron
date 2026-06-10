@@ -107,3 +107,9 @@ A deploy passes only when, for that run id:
 
 Deployed on a GCE `e2-micro` always-free VM — see
 [`control-plane/deploy`](control-plane/deploy/README.md).
+
+## Operating watchtron
+
+For the full picture — every repo it touches, the GCP infrastructure, all CI/CD
+flows, the secrets matrix, the one-time bootstrap, day-2 operations, and a
+troubleshooting catalog — see **[`docs/SYSTEM.md`](docs/SYSTEM.md)**.
