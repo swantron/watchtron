@@ -9,8 +9,6 @@ import { verifyRun } from './verify.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-const PORT = Number(process.env.WATCHTRON_PORT || 4318);
-const TOKEN = process.env.WATCHTRON_TOKEN || '';
 // Verdicts back the dashboard + badges and must survive a restart, so they are
 // mirrored to disk. Default lives at control-plane/state/ (gitignored, and the
 // deploy does `git reset --hard` not `git clean`, so it survives redeploys).
@@ -20,17 +18,18 @@ export function createApp({
   buffer = new SpanBuffer(),
   registry = loadRegistry(),
   verdicts = new VerdictStore({ file: STATE_FILE }),
+  token = process.env.WATCHTRON_TOKEN || '',
 } = {}) {
   const app = express();
   // OTLP/HTTP JSON payloads can be chunky; allow a generous body.
   app.use(express.json({ limit: '8mb' }));
 
-  /** Bearer-token guard. No-op when WATCHTRON_TOKEN is unset (local dev). */
+  /** Bearer-token guard. No-op when the token is unset (local dev). */
   function requireToken(req, res, next) {
-    if (!TOKEN) return next();
+    if (!token) return next();
     const auth = req.get('authorization') || '';
     const provided = auth.startsWith('Bearer ') ? auth.slice(7) : req.get('x-watchtron-token');
-    if (provided !== TOKEN) {
+    if (provided !== token) {
       return res.status(401).json({ error: 'unauthorized' });
     }
     next();
@@ -105,10 +104,12 @@ export function createApp({
 
 // Only listen when run directly (lets tests import createApp without a port).
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const app = createApp();
-  app.listen(PORT, () => {
+  const port = Number(process.env.WATCHTRON_PORT || 4318);
+  const token = process.env.WATCHTRON_TOKEN || '';
+  const app = createApp({ token });
+  app.listen(port, () => {
     console.log(
-      `[watchtron] control plane listening on :${PORT} (token ${TOKEN ? 'required' : 'OFF - dev'})`
+      `[watchtron] control plane listening on :${port} (token ${token ? 'required' : 'OFF - dev'})`
     );
   });
 }
