@@ -50,6 +50,8 @@ jobs:
           set -euo pipefail
           # gcloud compute ssh wants a key with no passphrase available locally.
           ssh-keygen -t rsa -b 2048 -f "$HOME/.ssh/google_compute_engine" -N '' -q
+          # Run git/npm as the repo owner (watchtron); only service control needs
+          # root. Running git as root tripped "detected dubious ownership".
           gcloud compute ssh "$GCE_INSTANCE" \
             --project "$GCP_PROJECT" \
             --zone "$GCE_ZONE" \
@@ -57,9 +59,8 @@ jobs:
             --quiet \
             --command '
               set -euo pipefail
-              sudo git -C /opt/watchtron fetch --depth 1 origin main
-              sudo git -C /opt/watchtron reset --hard origin/main
-              sudo chown -R watchtron:watchtron /opt/watchtron
+              sudo -u watchtron env HOME=/opt/watchtron git -C /opt/watchtron fetch --depth 1 origin main
+              sudo -u watchtron env HOME=/opt/watchtron git -C /opt/watchtron reset --hard origin/main
               sudo -u watchtron env HOME=/opt/watchtron npm install --omit=dev \
                 --prefix /opt/watchtron \
                 -w control-plane -w packages/registry --include-workspace-root
