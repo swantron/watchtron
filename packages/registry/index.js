@@ -43,6 +43,18 @@ function validateService(name, svc) {
       `registry: service "${name}" healthGate must define numeric availabilityPct and p95LatencyMs`
     );
   }
+  // Optional per-service tuning (the prober falls back to global defaults, and
+  // an explicit CLI flag overrides both).
+  if (svc.probe !== undefined) {
+    for (const key of ['requestsPerRoute', 'timeoutMs', 'waitMs']) {
+      if (svc.probe[key] !== undefined && typeof svc.probe[key] !== 'number') {
+        throw new Error(`registry: service "${name}" probe.${key} must be a number`);
+      }
+    }
+  }
+  if (svc.failClosed !== undefined && typeof svc.failClosed !== 'boolean') {
+    throw new Error(`registry: service "${name}" failClosed must be a boolean`);
+  }
 }
 
 /**

@@ -15,12 +15,12 @@ Usage:
 Options:
   --service <name>     Registry service to probe (required)
   --base-url <url>     Override the service's registry URL (e.g. a preview deploy)
-  --requests <n>       Requests per critical route (default 3)
+  --requests <n>       Requests per critical route (overrides the registry; default 3)
   --endpoint <url>     Control-plane OTLP endpoint (default $WATCHTRON_OTLP_ENDPOINT or http://localhost:4318)
   --token <token>      Bearer token (default $WATCHTRON_TOKEN)
   --verify             After export, poll /verify and gate exit code on the verdict
-  --wait <ms>          Max time to wait for telemetry to land during --verify (default 30000)
-  --strict             Treat an unreachable control plane as a failure (default: fail open)
+  --wait <ms>          Max time to wait for telemetry during --verify (overrides the registry; default 30000)
+  --strict             Treat an unreachable control plane as a failure (also set per-service via registry failClosed)
   --no-export          Probe only; print local signals and skip OTLP export
   --help               Show this help
 
@@ -113,14 +113,22 @@ async function main() {
   const runId = newRunId();
   const endpoint = args.endpoint || process.env.WATCHTRON_OTLP_ENDPOINT || 'http://localhost:4318';
   const token = args.token || process.env.WATCHTRON_TOKEN || '';
-  const requestsPerRoute = args.requests ? Number(args.requests) : 3;
-  const waitMs = args.wait ? Number(args.wait) : 30_000;
+  // Precedence for tuning: explicit CLI flag > registry per-service value > default.
+  const requestsPerRoute = args.requests ? Number(args.requests) : (service.probe?.requestsPerRoute ?? 3);
+  const waitMs = args.wait ? Number(args.wait) : (service.probe?.waitMs ?? 30_000);
+  const timeoutMs = service.probe?.timeoutMs ?? 10_000;
   const baseUrl = args['base-url'] || service.url;
 
   console.log(`[watchtron] probing ${service.name} (${baseUrl}) runId=${runId}`);
   ghOutput('run_id', runId);
 
-  const { spans, signals } = await probeService({ service, runId, baseUrl, requestsPerRoute });
+  const { spans, signals } = await probeService({
+    service,
+    runId,
+    baseUrl,
+    requestsPerRoute,
+    timeoutMs,
+  });
 
   console.log(
     `[watchtron] ${signals.succeeded}/${signals.total} ok · avail ${signals.availabilityPct}% · p95 ${signals.p95LatencyMs}ms`
@@ -130,7 +138,7 @@ async function main() {
     process.exit(0);
   }
 
-  const strict = args.strict || process.env.WATCHTRON_STRICT === 'true';
+  const strict = args.strict || process.env.WATCHTRON_STRICT === 'true' || Boolean(service.failClosed);
 
   // Export + verify both require the control plane. A transport failure here
   // means watchtron is unreachable (not that the service is broken), so route

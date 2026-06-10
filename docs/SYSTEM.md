@@ -100,6 +100,12 @@ The prober, control plane, and verify workflow all read it.
 - **post-deploy** = gated by the repo's CI after each deploy.
 - **schedule** = no deploy pipeline, so probed on a cron from watchtron itself.
 
+Per-service tuning also lives here (the registry is the single source of truth):
+an optional `probe` block (`requestsPerRoute`, `timeoutMs`, `waitMs`) and a
+`failClosed` flag. The prober resolves each as **explicit CLI flag > registry
+value > global default**, so e.g. chomptron's Cloud-Run-friendly `requests: 10 /
+wait: 25s` lives in `services.yaml`, not in chomptron's workflow.
+
 ---
 
 ## 4. Repository map
@@ -161,14 +167,14 @@ Only Caddy (80/443) is exposed publicly; the Node process is loopback-only.
 
 ### Consumer repos
 
-| Repo       | Workflow            | Post-deploy gate                                                                            |
-| ---------- | ------------------- | ------------------------------------------------------------------------------------------- |
-| tronswan   | `cicd.yml`          | build/test → DO deploy poll + Playwright → `watchtron-verify` (service: tronswan)           |
-| tronswan   | `watchtron-env.yml` | manual: patch the DO app spec with `WATCHTRON_*` runtime env vars                           |
-| chomptron  | `ci.yml`            | Cloud Build image → Cloud Run deploy → `verify` (service: chomptron, requests 10, wait 25s) |
-| swantron   | `deploy.yml`        | Hugo build → Pages deploy → `watchtron-verify` (service: swantron)                          |
-| mt         | `deploy.yml`        | Firebase deploy → `watchtron-verify` (service: mt)                                          |
-| wrenchtron | `deploy.yml`        | test → Firebase deploy → `watchtron-verify` (service: wrenchtron)                           |
+| Repo       | Workflow            | Post-deploy gate                                                                                   |
+| ---------- | ------------------- | -------------------------------------------------------------------------------------------------- |
+| tronswan   | `cicd.yml`          | build/test → DO deploy poll + Playwright → `watchtron-verify` (service: tronswan)                  |
+| tronswan   | `watchtron-env.yml` | manual: patch the DO app spec with `WATCHTRON_*` runtime env vars                                  |
+| chomptron  | `ci.yml`            | Cloud Build image → Cloud Run deploy → `verify` (service: chomptron; probe tuning in the registry) |
+| swantron   | `deploy.yml`        | Hugo build → Pages deploy → `watchtron-verify` (service: swantron)                                 |
+| mt         | `deploy.yml`        | Firebase deploy → `watchtron-verify` (service: mt)                                                 |
+| wrenchtron | `deploy.yml`        | test → Firebase deploy → `watchtron-verify` (service: wrenchtron)                                  |
 
 The reusable `verify.yml` **skips gracefully** (exit 0) when the OTLP endpoint
 secret is absent, so wiring it into a repo before its secrets exist is safe. It

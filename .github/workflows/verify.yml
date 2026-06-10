@@ -28,15 +28,15 @@ on:
         type: string
         default: ''
       requests:
-        description: Requests per critical route
+        description: Requests per critical route (0 = use the registry's per-service value)
         required: false
         type: number
-        default: 3
+        default: 0
       wait:
-        description: Max ms to wait for telemetry to land
+        description: Max ms to wait for telemetry to land (0 = use the registry's per-service value)
         required: false
         type: number
-        default: 30000
+        default: 0
       strict:
         description: Block the deploy if the control plane is unreachable (default fail-open)
         required: false
@@ -86,6 +86,6 @@ jobs:
           node prober/src/index.js \
             --service "${{ inputs.service }}" \
             ${{ inputs.base-url && format('--base-url {0}', inputs.base-url) || '' }} \
-            --requests "${{ inputs.requests }}" \
-            --wait "${{ inputs.wait }}" \
+            ${{ inputs.requests && format('--requests {0}', inputs.requests) || '' }} \
+            ${{ inputs.wait && format('--wait {0}', inputs.wait) || '' }} \
             --verify

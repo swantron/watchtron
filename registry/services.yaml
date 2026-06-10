@@ -17,6 +17,13 @@
 #   expectedServiceName  service.name the white-box server reports (only when whiteBox: true).
 #   mode              post-deploy -> verified by the repo's CI after each deploy.
 #                     schedule    -> verified on a cron (no deploy pipeline to hook).
+#   probe             (optional) per-service prober tuning. The prober falls back
+#                     to global defaults; an explicit CLI flag overrides both.
+#     requestsPerRoute  Requests fired per critical route (default 3).
+#     timeoutMs         Per-request HTTP timeout, ms (default 10000).
+#     waitMs            Max ms to wait for telemetry to land during --verify (default 30000).
+#   failClosed        (optional) true -> an unreachable control plane FAILS the
+#                     deploy instead of failing open with a warning (default false).
 
 services:
   tronswan:
@@ -49,6 +56,12 @@ services:
     healthGate:
       availabilityPct: 99
       p95LatencyMs: 2500
+    # Cloud Run throttles CPU between requests, which can delay the OTel batch
+    # export after the prober goes idle — probe harder and wait longer so the
+    # white-box server spans land before /verify gives up.
+    probe:
+      requestsPerRoute: 10
+      waitMs: 25000
 
   swantron:
     url: https://swantron.com

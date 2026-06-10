@@ -32,4 +32,4 @@ jobs:
             echo "::notice::WATCHTRON_OTLP_ENDPOINT is not set — control plane not deployed yet. Skipping probe."
             exit 0
           fi
-          node prober/src/index.js --service "${{ matrix.service }}" --wait 30000 --verify
+          node prober/src/index.js --service "${{ matrix.service }}" --verify
