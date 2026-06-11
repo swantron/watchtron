@@ -63,12 +63,14 @@ registry's `expectedServiceName`.
 ## State & persistence
 
 The span buffer is in-memory and ephemeral (a restart clears it, which is fine —
-verification is per-run). The **last verdict per service** is persisted to
-`control-plane/state/verdicts.json` (under `/opt/watchtron`, gitignored) so the
-dashboard and `/badge` endpoints survive restarts instead of resetting to grey
-"unknown". It survives the `git reset --hard` that `deploy-control-plane.yml`
-runs; only a `git clean -fdx` or a brand-new VM starts it empty. Override the
-path with `WATCHTRON_STATE_FILE`.
+verification is per-run). Two things _are_ persisted under `control-plane/state/`
+(in `/opt/watchtron`, gitignored): the **last verdict per service**
+(`verdicts.json`) so the dashboard and `/badge` endpoints survive restarts
+instead of resetting to grey "unknown", and the **rolling p95 history**
+(`baselines.json`) backing regression detection. Both survive the
+`git reset --hard` that `deploy-control-plane.yml` runs; only a `git clean -fdx`
+or a brand-new VM starts them empty. Override the paths with
+`WATCHTRON_STATE_FILE` / `WATCHTRON_BASELINE_FILE`.
 
 ## Health
 

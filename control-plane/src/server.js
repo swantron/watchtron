@@ -4,20 +4,25 @@ import { dirname, join } from 'node:path';
 import { loadRegistry } from '@watchtron/registry';
 import { SpanBuffer } from './buffer.js';
 import { VerdictStore } from './verdict-store.js';
+import { BaselineStore } from './baseline-store.js';
 import { decodeOtlpJson } from './otlp.js';
 import { verifyRun } from './verify.js';
+import { assessRegression } from './baseline.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// Verdicts back the dashboard + badges and must survive a restart, so they are
-// mirrored to disk. Default lives at control-plane/state/ (gitignored, and the
-// deploy does `git reset --hard` not `git clean`, so it survives redeploys).
+// Verdicts + the regression baseline back the dashboard and must survive a
+// restart, so they are mirrored to disk. Defaults live in control-plane/state/
+// (gitignored, and the deploy does `git reset --hard` not `git clean`, so they
+// survive redeploys).
 const STATE_FILE = process.env.WATCHTRON_STATE_FILE || join(here, '..', 'state', 'verdicts.json');
+const BASELINE_FILE = process.env.WATCHTRON_BASELINE_FILE || join(here, '..', 'state', 'baselines.json');
 
 export function createApp({
   buffer = new SpanBuffer(),
   registry = loadRegistry(),
   verdicts = new VerdictStore({ file: STATE_FILE }),
+  baselines = new BaselineStore({ file: BASELINE_FILE }),
   token = process.env.WATCHTRON_TOKEN || '',
 } = {}) {
   const app = express();
@@ -75,8 +80,19 @@ export function createApp({
       String(runId),
       version ? String(version) : null
     );
-    verdicts.set(serviceName, { ...verdict, at: new Date().toISOString() });
-    res.status(verdict.pass ? 200 : 422).json(verdict);
+
+    // Regression vs the service's recent history (informational unless the
+    // registry sets healthGate.p95RegressionPct). Assess against PRIOR samples,
+    // then record this run -- and only from a passing run, so a bad deploy
+    // doesn't poison the baseline.
+    const prior = baselines.samples(serviceName);
+    const tolerancePct = service.healthGate.p95RegressionPct;
+    const baseline = assessRegression(verdict.p95LatencyMs, prior, tolerancePct ? { tolerancePct } : {});
+    const fullVerdict = { ...verdict, baseline };
+    if (verdict.pass) baselines.record(serviceName, verdict.p95LatencyMs);
+
+    verdicts.set(serviceName, { ...fullVerdict, at: new Date().toISOString() });
+    res.status(verdict.pass ? 200 : 422).json(fullVerdict);
   });
 
   // --- Shields-compatible badge endpoint ---------------------------------

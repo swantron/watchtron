@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createApp } from '../src/server.js';
 import { SpanBuffer } from '../src/buffer.js';
 import { VerdictStore } from '../src/verdict-store.js';
+import { BaselineStore } from '../src/baseline-store.js';
 
 // Exercises the real Express app over a loopback port: OTLP ingest -> /verify ->
 // /badge round-trip, token enforcement, and request validation. State is
@@ -13,6 +14,7 @@ async function startServer(opts = {}) {
   const app = createApp({
     buffer: new SpanBuffer(),
     verdicts: new VerdictStore(), // no file -> in-memory only
+    baselines: new BaselineStore(), // no file -> in-memory only (don't touch disk in tests)
     ...opts,
   });
   return new Promise((resolve) => {
@@ -163,6 +165,37 @@ test('token guard: 401 without credentials, 200 with the bearer token', async ()
 
     // Unprotected liveness endpoint stays open even with a token configured.
     assert.equal((await fetch(`${base}/healthz`)).status, 200);
+  } finally {
+    await close();
+  }
+});
+
+test('baseline builds from passing runs and flags a regression (informational)', async () => {
+  const baselines = new BaselineStore(); // in-memory, shared across this server's calls
+  const { base, close } = await startServer({ baselines });
+  try {
+    // Five healthy ~100ms runs establish the baseline.
+    for (let i = 0; i < 5; i++) {
+      await fetch(`${base}/v1/traces`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(proberOtlp({ service: 'mt', runId: `base-${i}`, durationMs: 100 })),
+      });
+      const v = await (await fetch(`${base}/verify?service=mt&runId=base-${i}`)).json();
+      assert.equal(v.pass, true);
+    }
+
+    // A 3x-slower run: still under mt's absolute gate, but a regression vs history.
+    await fetch(`${base}/v1/traces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(proberOtlp({ service: 'mt', runId: 'slow', durationMs: 300 })),
+    });
+    const v = await (await fetch(`${base}/verify?service=mt&runId=slow`)).json();
+    assert.equal(v.pass, true); // informational — regression does not fail the gate by default
+    assert.equal(v.baseline.baselineP95, 100);
+    assert.equal(v.baseline.regressed, true);
+    assert.ok(v.baseline.regressionPct >= 100);
   } finally {
     await close();
   }
