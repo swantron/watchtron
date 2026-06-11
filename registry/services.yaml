@@ -11,6 +11,9 @@
 #                     deploy health check, not a windowed production SLO.
 #     availabilityPct Minimum % of probe requests that must succeed.
 #     p95LatencyMs    Max allowed p95 latency across critical-route probes.
+#     serverP95LatencyMs (optional, white-box) Max allowed p95 of the origin's own
+#                     server-span durations (app time, excludes network/TLS).
+#                     Informational unless set; gates the deploy when present.
 #   whiteBox          true  -> service emits server spans via @swantron/otel-bootstrap;
 #                            verify also asserts a server child span landed (real end-to-end).
 #                     false -> black-box only (static sites / unmodifiable upstreams).

@@ -196,8 +196,15 @@ async function main() {
     `- availability: **${verdict?.availabilityPct ?? '—'}%** (gate ${service.healthGate.availabilityPct}%)`
   );
   ghSummary(
-    `- p95 latency: **${verdict?.p95LatencyMs ?? '—'}ms** (gate ${service.healthGate.p95LatencyMs}ms)`
+    `- p95 latency (client, incl. network): **${verdict?.p95LatencyMs ?? '—'}ms** (gate ${service.healthGate.p95LatencyMs}ms)`
   );
+  if (verdict?.serverP95LatencyMs != null)
+    ghSummary(`- p95 latency (server, app time): **${verdict.serverP95LatencyMs}ms**`);
+  const eb = verdict?.errorBreakdown;
+  if (eb && (eb.http4xx || eb.http5xx || eb.transport))
+    ghSummary(
+      `- errors: ${eb.http4xx} client (4xx) · ${eb.http5xx} server (5xx) · ${eb.transport} transport`
+    );
   ghSummary(`- routes covered: ${verdict?.routesCovered?.join(', ') || '—'}`);
   if (service.whiteBox)
     ghSummary(`- end-to-end (server span correlated): ${verdict?.endToEnd ? 'yes' : 'no'}`);

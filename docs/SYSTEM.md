@@ -63,6 +63,17 @@ only, so it can match the prober's client trace against the origin's server span
   stale instance). Skipped unless an expected version is passed _and_ the origin
   reports a real, non-`0.0.0` `service.version`, so it never trips a service
   that isn't wired to report one yet.
+- (white-box, optional) `serverP95LatencyMs` ≤ `healthGate.serverP95LatencyMs`
+  **if that gate is set** — otherwise it's informational.
+
+The verdict also carries two **diagnostic** signals that don't gate on their own:
+
+- `errorBreakdown` — failures split into `http4xx` / `http5xx` / `transport`
+  (timeout / connection refused / DNS), so a red availability number is
+  actionable rather than opaque.
+- `serverP95LatencyMs` — the white-box origin's own span-duration p95 (app time).
+  Compared against the client `p95LatencyMs` (which includes network/TLS), it
+  isolates app latency from transport. `null` for black-box services.
 
 This gate is scored over a small synthetic burst (`requests` × `criticalRoutes`)
 fired right after deploy — a post-deploy **health gate**, deliberately not a

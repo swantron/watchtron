@@ -43,6 +43,9 @@ function validateService(name, svc) {
       `registry: service "${name}" healthGate must define numeric availabilityPct and p95LatencyMs`
     );
   }
+  if (healthGate.serverP95LatencyMs !== undefined && typeof healthGate.serverP95LatencyMs !== 'number') {
+    throw new Error(`registry: service "${name}" healthGate.serverP95LatencyMs must be a number`);
+  }
   // Optional per-service tuning (the prober falls back to global defaults, and
   // an explicit CLI flag overrides both).
   if (svc.probe !== undefined) {

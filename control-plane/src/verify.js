@@ -40,6 +40,8 @@ export function verifyRun(spans, service, runId, expectVersion = null) {
       proberSpans: 0,
       availabilityPct: 0,
       p95LatencyMs: 0,
+      serverP95LatencyMs: null,
+      errorBreakdown: { http4xx: 0, http5xx: 0, transport: 0 },
       routesCovered: [],
       routesMissing: service.criticalRoutes,
       whiteBox: !!service.whiteBox,
@@ -57,6 +59,15 @@ export function verifyRun(spans, service, runId, expectVersion = null) {
   const succeeded = proberSpans.filter((s) => s.statusCode && s.statusCode > 0 && s.statusCode < 400);
   const availabilityPct = (succeeded.length / proberSpans.length) * 100;
 
+  // Error breakdown (diagnostic — availability already gates the total). Splits
+  // failures into client (4xx), server (5xx), and transport (no HTTP response at
+  // all: timeout / connection refused / DNS) so a red verdict is actionable.
+  const errorBreakdown = {
+    http4xx: proberSpans.filter((s) => s.statusCode >= 400 && s.statusCode < 500).length,
+    http5xx: proberSpans.filter((s) => s.statusCode >= 500).length,
+    transport: proberSpans.filter((s) => !s.statusCode || s.statusCode <= 0).length,
+  };
+
   // Latency from the prober's measured client-span durations.
   const durations = proberSpans.map((s) => s.durationMs).filter((d) => d > 0);
   const p95LatencyMs = Math.round(percentile(durations, 95));
@@ -66,33 +77,40 @@ export function verifyRun(spans, service, runId, expectVersion = null) {
   const routesCovered = [...covered];
   const routesMissing = service.criticalRoutes.filter((r) => !covered.has(r));
 
-  // White-box: confirm a SERVER span for this run shares a trace with a prober
-  // span -> the request truly reached the instrumented origin (not just an edge
-  // cache / CDN). SpanKind 2 == SERVER.
+  // White-box: find the SERVER spans for this run that share a trace with a
+  // prober span -> the request truly reached the instrumented origin (not just
+  // an edge cache / CDN). SpanKind 2 == SERVER. These correlated spans feed
+  // end-to-end, server-side latency, and the version assertion.
   let endToEnd = null;
+  let serverP95LatencyMs = null;
+  let servedVersion = null;
+  let versionMatch = null;
   const proberTraceIds = new Set(proberSpans.map((s) => s.traceId));
   if (service.whiteBox) {
     const serverSpans = spans.filter(
       (s) => s.role === 'server' || s.kind === 2 || s.serviceName === service.expectedServiceName
     );
-    endToEnd = serverSpans.some((s) => proberTraceIds.has(s.traceId));
-  }
+    const correlated = serverSpans.filter((s) => proberTraceIds.has(s.traceId));
+    endToEnd = correlated.length > 0;
 
-  // Version assertion (white-box only): prove the CORRELATED server span is
-  // running the version this deploy expects -- i.e. the new code is actually
-  // serving, not a stale instance still answering. Stays a no-op unless an
-  // expected version was supplied AND the origin reports a real (non-default)
-  // version, so it never trips a service that isn't wired to report one yet.
-  let servedVersion = null;
-  let versionMatch = null;
-  if (service.whiteBox && expectVersion) {
-    const correlatedVersions = spans
-      .filter((s) => (s.role === 'server' || s.kind === 2) && proberTraceIds.has(s.traceId))
-      .map((s) => s.serviceVersion)
-      .filter((v) => v && v !== '0.0.0');
-    if (correlatedVersions.length > 0) {
-      servedVersion = correlatedVersions[0];
-      versionMatch = correlatedVersions.includes(expectVersion);
+    // Server-side latency: the origin's own span duration, which excludes the
+    // network/TLS time baked into the prober's client measurement. Comparing the
+    // two isolates app time from transport.
+    const serverDurations = correlated.map((s) => s.durationMs).filter((d) => d > 0);
+    if (serverDurations.length > 0) {
+      serverP95LatencyMs = Math.round(percentile(serverDurations, 95));
+    }
+
+    // Version assertion: prove the correlated server span runs the version this
+    // deploy expects -- the new code is actually serving, not a stale instance.
+    // No-op unless an expected version was supplied AND the origin reports a real
+    // (non-default) version, so it never trips a service not wired to report one.
+    if (expectVersion) {
+      const correlatedVersions = correlated.map((s) => s.serviceVersion).filter((v) => v && v !== '0.0.0');
+      if (correlatedVersions.length > 0) {
+        servedVersion = correlatedVersions[0];
+        versionMatch = correlatedVersions.includes(expectVersion);
+      }
     }
   }
 
@@ -116,6 +134,15 @@ export function verifyRun(spans, service, runId, expectVersion = null) {
       `served version ${servedVersion} != expected ${expectVersion} -- a stale instance may still be live (new deploy not fully rolled out?)`
     );
   }
+  // Optional server-side latency gate: only enforced when the registry opts in
+  // with healthGate.serverP95LatencyMs (otherwise server p95 is informational).
+  if (
+    serverP95LatencyMs !== null &&
+    service.healthGate.serverP95LatencyMs &&
+    serverP95LatencyMs > service.healthGate.serverP95LatencyMs
+  ) {
+    reasons.push(`server-side p95 ${serverP95LatencyMs}ms > gate ${service.healthGate.serverP95LatencyMs}ms`);
+  }
 
   return {
     service: service.name,
@@ -124,6 +151,8 @@ export function verifyRun(spans, service, runId, expectVersion = null) {
     proberSpans: proberSpans.length,
     availabilityPct: Number(availabilityPct.toFixed(1)),
     p95LatencyMs,
+    serverP95LatencyMs,
+    errorBreakdown,
     routesCovered,
     routesMissing,
     whiteBox: !!service.whiteBox,
