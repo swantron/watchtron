@@ -224,6 +224,27 @@
         padding: 20px;
         font-size: 12px;
       }
+      .credit {
+        margin-top: 6px;
+      }
+      .credit a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+      .credit a:hover {
+        color: var(--accent);
+      }
+      .credit a:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 3px;
+      }
+      .gh {
+        width: 13px;
+        height: 13px;
+        vertical-align: -2px;
+        fill: currentcolor;
+      }
     </style>
   </head>
   <body>
@@ -235,7 +256,28 @@
       <div class="rollup" id="rollup"></div>
       <div class="grid" id="grid"><div class="empty">loading fleet status…</div></div>
     </main>
-    <footer id="footer">watchtron · in-memory ephemeral telemetry · auto-refreshes every 15s</footer>
+    <footer>
+      <div id="footer-ops">watchtron · in-memory ephemeral telemetry · auto-refreshes every 15s</div>
+      <div class="credit">
+        <a href="https://github.com/swantron/watchtron" target="_blank" rel="noreferrer">
+          <svg class="gh" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"
+            />
+          </svg>
+          source
+        </a>
+        ·
+        <a
+          href="https://github.com/swantron/watchtron/blob/main/docs/SYSTEM.md"
+          target="_blank"
+          rel="noreferrer"
+          >docs</a
+        >
+        · <a href="https://swantron.com" target="_blank" rel="noreferrer">swantron.com</a> · ©
+        <span id="year"></span> swantron
+      </div>
+    </footer>
 
     <script>
       // A service is considered stale if it hasn't re-verified within this
@@ -377,22 +419,46 @@
         return html;
       }
 
+      function fmtUptime(sec) {
+        if (sec == null) return null;
+        const d = Math.floor(sec / 86400),
+          h = Math.floor((sec % 86400) / 3600),
+          m = Math.floor((sec % 3600) / 60);
+        if (d) return `up ${d}d ${h}h`;
+        if (h) return `up ${h}h ${m}m`;
+        return `up ${m}m`;
+      }
+
       async function load() {
         try {
-          const res = await fetch('/api/status');
-          const data = await res.json();
+          // Status is required; health (for uptime) is best-effort.
+          const [statusRes, healthRes] = await Promise.all([
+            fetch('/api/status'),
+            fetch('/healthz').catch(() => null),
+          ]);
+          const data = await statusRes.json();
+          let up = '';
+          if (healthRes && healthRes.ok) {
+            try {
+              const u = fmtUptime((await healthRes.json()).uptimeSec);
+              if (u) up = ` · ${u}`;
+            } catch {
+              /* leave uptime off */
+            }
+          }
           const services = [...data.services].sort((a, b) => RANK[statusOf(a)] - RANK[statusOf(b)]);
           document.getElementById('grid').innerHTML = services.length
             ? services.map(card).join('')
             : '<div class="empty">no services in the registry</div>';
           document.getElementById('rollup').innerHTML = rollup(data.services);
-          document.getElementById('footer').textContent =
-            `watchtron · ${data.buffer.total} spans buffered (in-memory, ephemeral) · auto-refreshes every 15s`;
+          document.getElementById('footer-ops').textContent =
+            `watchtron${up} · ${data.buffer.total} spans buffered (in-memory, ephemeral) · auto-refreshes every 15s`;
         } catch (e) {
           document.getElementById('rollup').innerHTML =
             `<span class="bad">failed to load status</span><span class="muted"> · ${esc(e.message || e)} · retrying…</span>`;
         }
       }
+      document.getElementById('year').textContent = new Date().getFullYear();
       load();
       setInterval(load, 15000);
     </script>
