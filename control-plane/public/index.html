@@ -10,9 +10,10 @@
         --panel: #131a22;
         --panel-2: #18222c;
         --text: #e6edf3;
-        --muted: #8b98a5;
-        --green: #2ea043;
-        --red: #e5534b;
+        --muted: #9aa7b3;
+        --green: #3fb950;
+        --red: #f85149;
+        --amber: #d29922;
         --grey: #6e7681;
         --accent: #58a6ff;
         --border: #222d38;
@@ -53,16 +54,46 @@
         max-width: 1100px;
         margin: 0 auto;
       }
+      .rollup {
+        font-size: 13px;
+        margin-bottom: 16px;
+      }
+      .rollup .ok {
+        color: var(--green);
+      }
+      .rollup .bad {
+        color: var(--red);
+      }
+      .rollup .warn {
+        color: var(--amber);
+      }
+      .rollup .muted {
+        color: var(--muted);
+      }
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
         gap: 16px;
       }
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+      }
       .card {
         background: var(--panel);
         border: 1px solid var(--border);
+        border-left: 3px solid var(--grey);
         border-radius: 10px;
         padding: 16px 18px;
+      }
+      .card.pass {
+        border-left-color: var(--green);
+      }
+      .card.fail {
+        border-left-color: var(--red);
+      }
+      .card.warn {
+        border-left-color: var(--amber);
       }
       .card h2 {
         margin: 0 0 2px;
@@ -71,28 +102,54 @@
         align-items: center;
         gap: 8px;
       }
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--grey);
-        display: inline-block;
+      /* Status is conveyed by glyph + word + colour (never colour alone). */
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid currentcolor;
       }
-      .dot.pass {
-        background: var(--green);
+      .status .glyph {
+        font-size: 12px;
       }
-      .dot.fail {
-        background: var(--red);
+      .status.pass {
+        color: var(--green);
+      }
+      .status.fail {
+        color: var(--red);
+      }
+      .status.warn {
+        color: var(--amber);
+      }
+      .status.unknown {
+        color: var(--grey);
+      }
+      .name {
+        font-size: 16px;
       }
       .url {
         color: var(--accent);
         text-decoration: none;
         font-size: 13px;
       }
+      .url:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 3px;
+      }
       .meta {
         color: var(--muted);
         font-size: 12px;
         margin: 8px 0;
+      }
+      .stale {
+        color: var(--amber);
       }
       .tags {
         display: flex;
@@ -114,6 +171,7 @@
       }
       .signals {
         display: flex;
+        flex-wrap: wrap;
         gap: 18px;
         margin-top: 10px;
       }
@@ -126,8 +184,34 @@
         font-size: 18px;
         font-weight: 600;
       }
+      .signal .v.good {
+        color: var(--green);
+      }
+      .signal .v.warn {
+        color: var(--amber);
+      }
+      .signal .v.bad {
+        color: var(--red);
+      }
+      .signal .v .gate {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 400;
+      }
+      .line {
+        font-size: 12px;
+        margin-top: 8px;
+        color: var(--muted);
+      }
+      .line.trend.regressed {
+        color: var(--amber);
+      }
+      .line.errs {
+        color: var(--muted);
+      }
       .reasons {
-        margin-top: 10px;
+        margin: 10px 0 0;
+        padding-left: 18px;
         font-size: 12px;
         color: var(--red);
       }
@@ -140,10 +224,6 @@
         padding: 20px;
         font-size: 12px;
       }
-      .refresh {
-        color: var(--muted);
-        font-size: 12px;
-      }
     </style>
   </head>
   <body>
@@ -152,51 +232,165 @@
       <div class="sub">fleet observability paved road — synthetic traffic verified by OpenTelemetry</div>
     </header>
     <main>
-      <div class="refresh" id="refresh"></div>
-      <div class="grid" id="grid"></div>
+      <div class="rollup" id="rollup"></div>
+      <div class="grid" id="grid"><div class="empty">loading fleet status…</div></div>
     </main>
-    <footer>watchtron · in-memory ephemeral telemetry · auto-refreshes every 15s</footer>
+    <footer id="footer">watchtron · in-memory ephemeral telemetry · auto-refreshes every 15s</footer>
 
     <script>
+      // A service is considered stale if it hasn't re-verified within this
+      // window. The schedule.yml cron probes the whole fleet every 30 min, so a
+      // gap beyond ~2 cycles means the refresh path (cron / deploys) is broken.
+      const STALE_MS = 60 * 60 * 1000;
+      // Warn (amber) when client p95 is within this fraction of the absolute gate.
+      const NEAR_GATE = 0.85;
+
+      const esc = (s) =>
+        String(s == null ? '' : s).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        );
       const fmtPct = (n) => (n == null ? '—' : n + '%');
-      const fmtMs = (n) => (n == null ? '—' : n + 'ms');
+
+      function relTime(iso) {
+        const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+        if (s < 60) return Math.floor(s) + 's ago';
+        if (s < 3600) return Math.floor(s / 60) + 'm ago';
+        if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+        return Math.floor(s / 86400) + 'd ago';
+      }
+      const isStale = (v) => v && Date.now() - new Date(v.at).getTime() > STALE_MS;
+
+      // Health status from the last verdict: fail > warn (regressed / near-gate)
+      // > pass; unknown when never verified.
+      function statusOf(s) {
+        const v = s.lastVerdict;
+        if (!v) return 'unknown';
+        if (!v.pass) return 'fail';
+        const gate = s.healthGate && s.healthGate.p95LatencyMs;
+        const nearGate = gate && v.p95LatencyMs > NEAR_GATE * gate;
+        if ((v.baseline && v.baseline.regressed) || nearGate) return 'warn';
+        return 'pass';
+      }
+      const GLYPH = { pass: '✓', fail: '✗', warn: '⚠', unknown: '◦' };
+      const LABEL = { pass: 'pass', fail: 'fail', warn: 'degraded', unknown: 'no data' };
+      const RANK = { fail: 0, unknown: 1, warn: 2, pass: 3 };
 
       function card(s) {
         const v = s.lastVerdict;
-        const cls = !v ? '' : v.pass ? 'pass' : 'fail';
-        const e2e = v && v.whiteBox ? (v.endToEnd ? ' · e2e ✓' : ' · e2e ✗') : '';
+        const st = statusOf(s);
+        const gate = s.healthGate && s.healthGate.p95LatencyMs;
+
+        // p95 (client) coloured against its gate.
+        let p95v = '—';
+        if (v) {
+          let cls = '';
+          if (gate && v.p95LatencyMs > gate) cls = 'bad';
+          else if (gate && v.p95LatencyMs > NEAR_GATE * gate) cls = 'warn';
+          else if (gate) cls = 'good';
+          p95v = `<span class="v ${cls}">${v.p95LatencyMs}<span class="gate">${gate ? ' / ' + gate : ''}ms</span></span>`;
+        }
+        const srv =
+          v && v.serverP95LatencyMs != null
+            ? `<div class="signal"><div class="k">p95 (server)</div><div class="v">${v.serverP95LatencyMs}ms</div></div>`
+            : '';
+
+        const e2e = v && v.whiteBox ? ` · e2e ${v.endToEnd ? '✓' : '✗'}` : '';
+        const stale = isStale(v)
+          ? ` · <span class="stale" title="last verified ${v ? new Date(v.at).toLocaleString() : ''}">stale ${relTime(v.at)}</span>`
+          : '';
+        const meta = v
+          ? `<span title="${new Date(v.at).toLocaleString()}">${relTime(v.at)}</span>${e2e} · ${v.proberSpans} probes${stale}`
+          : 'never verified';
+
+        // Regression trend (the new baseline signal).
+        const b = v && v.baseline;
+        const trend =
+          b && b.baselineP95 != null
+            ? `<div class="line trend ${b.regressed ? 'regressed' : ''}">p95 ${b.regressionPct >= 0 ? '+' : ''}${b.regressionPct}% vs ${b.baselineP95}ms baseline${b.regressed ? ' ⚠ regression' : ''} · ${b.samples} samples</div>`
+            : '';
+
+        // Which build is live (white-box version assertion).
+        const ver =
+          v && v.servedVersion
+            ? `<div class="line">build ${esc(String(v.servedVersion).slice(0, 7))}${v.versionMatch === true ? ' ✓' : ''}</div>`
+            : '';
+
+        // Error breakdown, only when something actually failed.
+        const eb = v && v.errorBreakdown;
+        const errs =
+          eb && eb.http4xx + eb.http5xx + eb.transport > 0
+            ? `<div class="line errs">errors — 4xx ${eb.http4xx} · 5xx ${eb.http5xx} · transport ${eb.transport}</div>`
+            : '';
+
         const reasons =
           v && v.reasons && v.reasons.length
-            ? '<ul class="reasons">' + v.reasons.map((r) => '<li>' + r + '</li>').join('') + '</ul>'
+            ? '<ul class="reasons">' + v.reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>'
             : '';
+
         return `
-          <div class="card">
-            <h2><span class="dot ${cls}"></span>${s.name}</h2>
-            <a class="url" href="${s.url}" target="_blank" rel="noreferrer">${s.url}</a>
+          <div class="card ${st}">
+            <h2>
+              <span class="status ${st}" aria-label="status: ${LABEL[st]}"><span class="glyph" aria-hidden="true">${GLYPH[st]}</span>${LABEL[st]}</span>
+              <span class="name">${esc(s.name)}</span>
+            </h2>
+            <a class="url" href="${esc(s.url)}" target="_blank" rel="noreferrer">${esc(s.url)}</a>
             <div class="tags">
-              <span class="tag">${s.host}</span>
+              <span class="tag">${esc(s.host)}</span>
               <span class="tag ${s.whiteBox ? 'wb' : ''}">${s.whiteBox ? 'white-box' : 'black-box'}</span>
-              <span class="tag">${s.mode}</span>
+              <span class="tag">${esc(s.mode)}</span>
             </div>
-            <div class="meta">${v ? 'last verified ' + new Date(v.at).toLocaleString() + e2e : 'never verified'}</div>
+            <div class="meta">${meta}</div>
             <div class="signals">
               <div class="signal"><div class="k">avail</div><div class="v">${v ? fmtPct(v.availabilityPct) : '—'}</div></div>
-              <div class="signal"><div class="k">p95</div><div class="v">${v ? fmtMs(v.p95LatencyMs) : '—'}</div></div>
-              <div class="signal"><div class="k">probes</div><div class="v">${v ? v.proberSpans : '—'}</div></div>
+              <div class="signal"><div class="k">p95 (client)</div>${p95v}</div>
+              ${srv}
             </div>
+            ${trend}
+            ${ver}
+            ${errs}
             ${reasons}
           </div>`;
+      }
+
+      function rollup(services) {
+        const total = services.length;
+        let passing = 0,
+          failing = 0,
+          unknown = 0,
+          regressed = 0,
+          stale = 0;
+        for (const s of services) {
+          const v = s.lastVerdict;
+          if (!v) unknown++;
+          else if (v.pass) passing++;
+          else failing++;
+          if (v && v.pass && v.baseline && v.baseline.regressed) regressed++;
+          if (isStale(v)) stale++;
+        }
+        let html = `<span class="${failing ? 'warn' : 'ok'}">${passing}/${total} healthy</span>`;
+        if (failing) html += `<span class="bad"> · ${failing} failing</span>`;
+        if (unknown) html += `<span class="muted"> · ${unknown} unverified</span>`;
+        if (regressed) html += `<span class="warn"> · ${regressed} regressed</span>`;
+        if (stale) html += `<span class="warn"> · ${stale} stale</span>`;
+        html += `<span class="muted"> · updated ${new Date().toLocaleTimeString()}</span>`;
+        return html;
       }
 
       async function load() {
         try {
           const res = await fetch('/api/status');
           const data = await res.json();
-          document.getElementById('grid').innerHTML = data.services.map(card).join('');
-          document.getElementById('refresh').textContent =
-            `${data.services.length} services · ${data.buffer.total} spans buffered · updated ${new Date().toLocaleTimeString()}`;
+          const services = [...data.services].sort((a, b) => RANK[statusOf(a)] - RANK[statusOf(b)]);
+          document.getElementById('grid').innerHTML = services.length
+            ? services.map(card).join('')
+            : '<div class="empty">no services in the registry</div>';
+          document.getElementById('rollup').innerHTML = rollup(data.services);
+          document.getElementById('footer').textContent =
+            `watchtron · ${data.buffer.total} spans buffered (in-memory, ephemeral) · auto-refreshes every 15s`;
         } catch (e) {
-          document.getElementById('refresh').textContent = 'failed to load status: ' + e;
+          document.getElementById('rollup').innerHTML =
+            `<span class="bad">failed to load status</span><span class="muted"> · ${esc(e.message || e)} · retrying…</span>`;
         }
       }
       load();

@@ -14,6 +14,9 @@
 #     serverP95LatencyMs (optional, white-box) Max allowed p95 of the origin's own
 #                     server-span durations (app time, excludes network/TLS).
 #                     Informational unless set; gates the deploy when present.
+#     p95RegressionPct (optional) % the client p95 may exceed the rolling baseline
+#                     (median of recent passing runs) before it's flagged as a
+#                     regression. Default 50; regression is informational unless set.
 #   whiteBox          true  -> service emits server spans via @swantron/otel-bootstrap;
 #                            verify also asserts a server child span landed (real end-to-end).
 #                     false -> black-box only (static sites / unmodifiable upstreams).

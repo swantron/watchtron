@@ -66,7 +66,7 @@ only, so it can match the prober's client trace against the origin's server span
 - (white-box, optional) `serverP95LatencyMs` ≤ `healthGate.serverP95LatencyMs`
   **if that gate is set** — otherwise it's informational.
 
-The verdict also carries two **diagnostic** signals that don't gate on their own:
+The verdict also carries **diagnostic** signals that don't gate on their own:
 
 - `errorBreakdown` — failures split into `http4xx` / `http5xx` / `transport`
   (timeout / connection refused / DNS), so a red availability number is
@@ -74,6 +74,13 @@ The verdict also carries two **diagnostic** signals that don't gate on their own
 - `serverP95LatencyMs` — the white-box origin's own span-duration p95 (app time).
   Compared against the client `p95LatencyMs` (which includes network/TLS), it
   isolates app latency from transport. `null` for black-box services.
+- `baseline` — `{ baselineP95, regressionPct, regressed, samples }`. The control
+  plane keeps a rolling window (default 20) of recent **passing** client p95s per
+  service; a run is flagged `regressed` when its p95 exceeds the window's median
+  by more than the tolerance (default 50%, override via
+  `healthGate.p95RegressionPct`). Catches slow creep / sudden slowdown that's
+  still under the absolute gate. Informational unless the registry opts in to
+  gate on it. Withholds judgment until the window has ≥5 samples.
 
 This gate is scored over a small synthetic burst (`requests` × `criticalRoutes`)
 fired right after deploy — a post-deploy **health gate**, deliberately not a
@@ -238,11 +245,12 @@ the version check is simply skipped.
 
 ### Control-plane process env
 
-| Var                    | Default                             | Purpose                                                                                                                                         |
-| ---------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WATCHTRON_PORT`       | `4318`                              | loopback port the Node process listens on (Caddy proxies to it)                                                                                 |
-| `WATCHTRON_TOKEN`      | _(unset = open; dev only)_          | bearer token required on `/v1/traces` and `/verify`                                                                                             |
-| `WATCHTRON_STATE_FILE` | `control-plane/state/verdicts.json` | where the last verdict per service is persisted so badges/dashboard survive restarts (gitignored; survives `git reset --hard`, not `git clean`) |
+| Var                       | Default                              | Purpose                                                                                                                                         |
+| ------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WATCHTRON_PORT`          | `4318`                               | loopback port the Node process listens on (Caddy proxies to it)                                                                                 |
+| `WATCHTRON_TOKEN`         | _(unset = open; dev only)_           | bearer token required on `/v1/traces` and `/verify`                                                                                             |
+| `WATCHTRON_STATE_FILE`    | `control-plane/state/verdicts.json`  | where the last verdict per service is persisted so badges/dashboard survive restarts (gitignored; survives `git reset --hard`, not `git clean`) |
+| `WATCHTRON_BASELINE_FILE` | `control-plane/state/baselines.json` | rolling p95 history per service for regression detection (same persistence contract as the verdict store)                                       |
 
 ### Prober / verify env
 

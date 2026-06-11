@@ -200,6 +200,13 @@ async function main() {
   );
   if (verdict?.serverP95LatencyMs != null)
     ghSummary(`- p95 latency (server, app time): **${verdict.serverP95LatencyMs}ms**`);
+  const bl = verdict?.baseline;
+  if (bl && bl.baselineP95 != null) {
+    const sign = bl.regressionPct >= 0 ? '+' : '';
+    ghSummary(
+      `- p95 vs baseline: ${verdict.p95LatencyMs}ms vs ${bl.baselineP95}ms median (${sign}${bl.regressionPct}%${bl.regressed ? ' ⚠️ **regression**' : ''}, ${bl.samples} samples)`
+    );
+  }
   const eb = verdict?.errorBreakdown;
   if (eb && (eb.http4xx || eb.http5xx || eb.transport))
     ghSummary(

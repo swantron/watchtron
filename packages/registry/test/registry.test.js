@@ -78,6 +78,37 @@ test('rejects a non-boolean failClosed', () => {
   assert.throws(() => loadRegistry(file), /failClosed must be a boolean/);
 });
 
+test('rejects an unknown top-level field (typo guard)', () => {
+  const file = writeRegistry(`    probes:\n      requestsPerRoute: 5\n`);
+  assert.throws(() => loadRegistry(file), /unknown top-level field "probes"/);
+});
+
+test('rejects an unknown probe field', () => {
+  const file = writeRegistry(`    probe:\n      requestPerRoute: 5\n`);
+  assert.throws(() => loadRegistry(file), /unknown probe field "requestPerRoute"/);
+});
+
+test('rejects an unknown healthGate field', () => {
+  // Bespoke (not the base helper) so the stray key sits inside the healthGate block.
+  const file = join(mkdtempSync(join(tmpdir(), 'wt-reg-')), 'services.yaml');
+  writeFileSync(
+    file,
+    `services:
+  demo:
+    url: https://demo.test
+    whiteBox: false
+    mode: post-deploy
+    criticalRoutes:
+      - /
+    healthGate:
+      availabilityPct: 99
+      p95LatencyMs: 1000
+      p95: 1000
+`
+  );
+  assert.throws(() => loadRegistry(file), /unknown healthGate field "p95"/);
+});
+
 test('chomptron centralizes its Cloud Run probe tuning in the registry', () => {
   const chomptron = getService('chomptron');
   assert.equal(chomptron.probe.requestsPerRoute, 10);
