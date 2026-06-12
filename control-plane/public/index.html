@@ -232,14 +232,15 @@
       }
       .strip {
         display: flex;
-        gap: 2px;
+        gap: 1px;
         height: 22px;
         margin-top: 6px;
+        overflow: hidden;
       }
       .cell {
         flex: 1 1 0;
-        min-width: 2px;
-        border-radius: 2px;
+        min-width: 0; /* allow cells to shrink to fit the panel — never overflow */
+        border-radius: 1px;
         background: var(--grey);
       }
       .cell.up {
@@ -252,6 +253,7 @@
         position: relative;
         height: 9px;
         margin-top: 3px;
+        overflow: hidden;
       }
       .marker {
         position: absolute;
@@ -474,7 +476,7 @@
         let uptimeBlock = '';
         const u = UPTIME && UPTIME.byHost[hostOf(s.url)];
         if (u && u.series.length) {
-          const series = u.series.slice(-96);
+          const series = u.series.slice(-60);
           const t0 = new Date(series[0].time).getTime();
           const tN = new Date(series[series.length - 1].time).getTime();
           const span = Math.max(1, tN - t0);
