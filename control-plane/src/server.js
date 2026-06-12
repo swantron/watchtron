@@ -5,29 +5,39 @@ import { loadRegistry } from '@watchtron/registry';
 import { SpanBuffer } from './buffer.js';
 import { VerdictStore } from './verdict-store.js';
 import { BaselineStore } from './baseline-store.js';
+import { HistoryStore } from './history-store.js';
 import { decodeOtlpJson } from './otlp.js';
 import { verifyRun } from './verify.js';
 import { assessRegression } from './baseline.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// Verdicts + the regression baseline back the dashboard and must survive a
-// restart, so they are mirrored to disk. Defaults live in control-plane/state/
-// (gitignored, and the deploy does `git reset --hard` not `git clean`, so they
-// survive redeploys).
+// Verdicts + the regression baseline + verification history back the dashboards
+// and must survive a restart, so they are mirrored to disk. Defaults live in
+// control-plane/state/ (gitignored, and the deploy does `git reset --hard` not
+// `git clean`, so they survive redeploys).
 const STATE_FILE = process.env.WATCHTRON_STATE_FILE || join(here, '..', 'state', 'verdicts.json');
 const BASELINE_FILE = process.env.WATCHTRON_BASELINE_FILE || join(here, '..', 'state', 'baselines.json');
+const HISTORY_FILE = process.env.WATCHTRON_HISTORY_FILE || join(here, '..', 'state', 'history.json');
 
 export function createApp({
   buffer = new SpanBuffer(),
   registry = loadRegistry(),
   verdicts = new VerdictStore({ file: STATE_FILE }),
   baselines = new BaselineStore({ file: BASELINE_FILE }),
+  history = new HistoryStore({ file: HISTORY_FILE }),
   token = process.env.WATCHTRON_TOKEN || '',
 } = {}) {
   const app = express();
   // OTLP/HTTP JSON payloads can be chunky; allow a generous body.
   app.use(express.json({ limit: '8mb' }));
+  // Read endpoints serve public, non-sensitive fleet data, and the blended
+  // status page on tronswan.com reads /api/status cross-origin. (/v1/traces is
+  // still token-guarded below, so this only widens read access.)
+  app.use((_req, res, next) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    next();
+  });
 
   /** Bearer-token guard. No-op when the token is unset (local dev). */
   function requireToken(req, res, next) {
@@ -88,10 +98,19 @@ export function createApp({
     const prior = baselines.samples(serviceName);
     const tolerancePct = service.healthGate.p95RegressionPct;
     const baseline = assessRegression(verdict.p95LatencyMs, prior, tolerancePct ? { tolerancePct } : {});
+    const at = new Date().toISOString();
     const fullVerdict = { ...verdict, baseline };
     if (verdict.pass) baselines.record(serviceName, verdict.p95LatencyMs);
+    // Record every run (pass or fail) -- failed deploys are exactly what you want
+    // to see as markers against the uptime timeline.
+    history.record(serviceName, {
+      at,
+      pass: verdict.pass,
+      p95: verdict.p95LatencyMs,
+      version: verdict.servedVersion,
+    });
 
-    verdicts.set(serviceName, { ...fullVerdict, at: new Date().toISOString() });
+    verdicts.set(serviceName, { ...fullVerdict, at });
     res.status(verdict.pass ? 200 : 422).json(fullVerdict);
   });
 
@@ -112,7 +131,7 @@ export function createApp({
   app.get('/api/status', (_req, res) => {
     const services = registry.list().map((name) => {
       const v = verdicts.get(name);
-      return { name, ...registry.services[name], lastVerdict: v };
+      return { name, ...registry.services[name], lastVerdict: v, history: history.list(name) };
     });
     res.json({ services, buffer: buffer.stats() });
   });

@@ -251,6 +251,7 @@ the version check is simply skipped.
 | `WATCHTRON_TOKEN`         | _(unset = open; dev only)_           | bearer token required on `/v1/traces` and `/verify`                                                                                             |
 | `WATCHTRON_STATE_FILE`    | `control-plane/state/verdicts.json`  | where the last verdict per service is persisted so badges/dashboard survive restarts (gitignored; survives `git reset --hard`, not `git clean`) |
 | `WATCHTRON_BASELINE_FILE` | `control-plane/state/baselines.json` | rolling p95 history per service for regression detection (same persistence contract as the verdict store)                                       |
+| `WATCHTRON_HISTORY_FILE`  | `control-plane/state/history.json`   | per-service verification history (`{at,pass,p95,version}`) — the deploy markers on the blended uptime timeline; exposed at `/api/status`        |
 
 ### Prober / verify env
 

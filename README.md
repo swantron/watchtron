@@ -9,6 +9,16 @@ It is a single reusable GitHub Actions workflow + one shared instrumentation
 package + one tiny control plane that onboards any service in minutes, across a
 deliberately heterogeneous fleet.
 
+> **Which tool for what?** watchtron is the **deploy gate**: per-deploy, it
+> proves the _new build_ is serving real traffic end-to-end (trace correlation,
+> version assertion, regression vs. baseline) and **fails the deploy** when it
+> isn't. It is _not_ a continuous uptime monitor — that job belongs to
+> [**uptime-monitor**](https://github.com/swantron/uptime-monitor), which pings
+> the fleet every 5 minutes and tracks uptime % + incidents over time. The two
+> compose: watchtron's dashboard (and tronswan.com/status) overlay watchtron's
+> **verified-deploy markers** on uptime-monitor's continuous **uptime timeline**,
+> so you can see whether a deploy caused a dip.
+
 ```mermaid
 flowchart TD
   subgraph cp [Control plane - GCE e2-micro always-free VM]

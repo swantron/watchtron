@@ -218,6 +218,57 @@
       .reasons li {
         margin: 2px 0;
       }
+      /* Blended reliability strip: uptime-monitor's up/down series + watchtron deploy markers. */
+      .uptime {
+        margin-top: 12px;
+      }
+      .uptime-head {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .strip {
+        display: flex;
+        gap: 2px;
+        height: 22px;
+        margin-top: 6px;
+      }
+      .cell {
+        flex: 1 1 0;
+        min-width: 2px;
+        border-radius: 2px;
+        background: var(--grey);
+      }
+      .cell.up {
+        background: var(--green);
+      }
+      .cell.down {
+        background: var(--red);
+      }
+      .markers {
+        position: relative;
+        height: 9px;
+        margin-top: 3px;
+      }
+      .marker {
+        position: absolute;
+        top: 0;
+        width: 0;
+        height: 0;
+        transform: translateX(-4px);
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 7px solid var(--accent);
+      }
+      .marker.pass {
+        border-bottom-color: var(--green);
+      }
+      .marker.fail {
+        border-bottom-color: var(--red);
+      }
       footer {
         color: var(--muted);
         text-align: center;
@@ -318,6 +369,54 @@
       const LABEL = { pass: 'pass', fail: 'fail', warn: 'degraded', unknown: 'no data' };
       const RANK = { fail: 0, unknown: 1, warn: 2, pass: 3 };
 
+      // --- Blended uptime (from the uptime-monitor Gist) ----------------------
+      // Read the public Gist directly (CORS-open, CDN-cached, not API
+      // rate-limited) and join it to watchtron's fleet by hostname.
+      const GIST_RAW_URL =
+        'https://gist.githubusercontent.com/swantron/29651cabd005a75bac63afb74339ad74/raw/uptime.json';
+      let UPTIME = null;
+      let gistCache = null,
+        gistAt = 0;
+
+      const hostOf = (url) => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, '');
+        } catch {
+          return '';
+        }
+      };
+
+      async function getUptime() {
+        // Uptime changes only every ~5 min; cache so the 15s loop doesn't hammer the Gist.
+        if (gistCache && Date.now() - gistAt < 60000) return gistCache;
+        try {
+          const r = await fetch(GIST_RAW_URL, { cache: 'no-cache' });
+          if (r.ok) {
+            gistCache = await r.json();
+            gistAt = Date.now();
+          }
+        } catch {
+          /* keep last good copy */
+        }
+        return gistCache;
+      }
+
+      function buildUptimeIndex(uptime) {
+        if (!uptime || !uptime.services) return null;
+        const byHost = {};
+        for (const [key, svc] of Object.entries(uptime.services)) {
+          const h = hostOf(svc.url);
+          if (h) byHost[h] = { svc, key, series: [] };
+        }
+        for (const c of uptime.checks || []) {
+          for (const entry of Object.values(byHost)) {
+            const r = c.results && c.results[entry.key];
+            if (r) entry.series.push({ time: c.time, up: r.up, ms: r.ms });
+          }
+        }
+        return { byHost };
+      }
+
       function card(s) {
         const v = s.lastVerdict;
         const st = statusOf(s);
@@ -370,6 +469,39 @@
             ? '<ul class="reasons">' + v.reasons.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>'
             : '';
 
+        // Blended reliability strip: uptime-monitor's continuous up/down series
+        // with watchtron's verified-deploy markers overlaid (joined by host).
+        let uptimeBlock = '';
+        const u = UPTIME && UPTIME.byHost[hostOf(s.url)];
+        if (u && u.series.length) {
+          const series = u.series.slice(-96);
+          const t0 = new Date(series[0].time).getTime();
+          const tN = new Date(series[series.length - 1].time).getTime();
+          const span = Math.max(1, tN - t0);
+          const cells = series
+            .map(
+              (p) =>
+                `<div class="cell ${p.up === true ? 'up' : p.up === false ? 'down' : ''}" title="${new Date(p.time).toLocaleString()} · ${p.up ? 'up' : 'down'}${p.ms != null ? ' · ' + p.ms + 'ms' : ''}"></div>`
+            )
+            .join('');
+          const markers = (s.history || [])
+            .filter((h) => {
+              const t = new Date(h.at).getTime();
+              return t >= t0 && t <= tN;
+            })
+            .map((h) => {
+              const left = (((new Date(h.at).getTime() - t0) / span) * 100).toFixed(2);
+              return `<div class="marker ${h.pass ? 'pass' : 'fail'}" style="left:${left}%" title="deploy ${relTime(h.at)} · ${h.pass ? 'verified' : 'failed'}${h.version ? ' · ' + esc(String(h.version).slice(0, 7)) : ''}"></div>`;
+            })
+            .join('');
+          uptimeBlock = `
+            <div class="uptime">
+              <div class="uptime-head"><span>uptime ${u.svc.uptimePercent}%</span><span>${u.svc.avgResponseMs}ms avg · deploys ▲</span></div>
+              <div class="strip">${cells}</div>
+              <div class="markers">${markers}</div>
+            </div>`;
+        }
+
         return `
           <div class="card ${st}">
             <h2>
@@ -388,6 +520,7 @@
               <div class="signal"><div class="k">p95 (client)</div>${p95v}</div>
               ${srv}
             </div>
+            ${uptimeBlock}
             ${trend}
             ${ver}
             ${errs}
@@ -446,6 +579,7 @@
               /* leave uptime off */
             }
           }
+          UPTIME = buildUptimeIndex(await getUptime());
           const services = [...data.services].sort((a, b) => RANK[statusOf(a)] - RANK[statusOf(b)]);
           document.getElementById('grid').innerHTML = services.length
             ? services.map(card).join('')

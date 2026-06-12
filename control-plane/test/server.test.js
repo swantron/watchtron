@@ -4,6 +4,7 @@ import { createApp } from '../src/server.js';
 import { SpanBuffer } from '../src/buffer.js';
 import { VerdictStore } from '../src/verdict-store.js';
 import { BaselineStore } from '../src/baseline-store.js';
+import { HistoryStore } from '../src/history-store.js';
 
 // Exercises the real Express app over a loopback port: OTLP ingest -> /verify ->
 // /badge round-trip, token enforcement, and request validation. State is
@@ -15,6 +16,7 @@ async function startServer(opts = {}) {
     buffer: new SpanBuffer(),
     verdicts: new VerdictStore(), // no file -> in-memory only
     baselines: new BaselineStore(), // no file -> in-memory only (don't touch disk in tests)
+    history: new HistoryStore(), // no file -> in-memory only
     ...opts,
   });
   return new Promise((resolve) => {
@@ -196,6 +198,32 @@ test('baseline builds from passing runs and flags a regression (informational)',
     assert.equal(v.baseline.baselineP95, 100);
     assert.equal(v.baseline.regressed, true);
     assert.ok(v.baseline.regressionPct >= 100);
+  } finally {
+    await close();
+  }
+});
+
+test('api/status exposes per-service verification history and sets CORS', async () => {
+  const { base, close } = await startServer();
+  try {
+    for (const [runId, dur] of [
+      ['h1', 100],
+      ['h2', 110],
+    ]) {
+      await fetch(`${base}/v1/traces`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(proberOtlp({ service: 'mt', runId, durationMs: dur })),
+      });
+      await fetch(`${base}/verify?service=mt&runId=${runId}`);
+    }
+    const res = await fetch(`${base}/api/status`);
+    assert.equal(res.headers.get('access-control-allow-origin'), '*'); // tronswan reads this cross-origin
+    const data = await res.json();
+    const mt = data.services.find((s) => s.name === 'mt');
+    assert.equal(mt.history.length, 2);
+    assert.equal(mt.history[0].pass, true);
+    assert.equal(mt.history[1].p95, 110);
   } finally {
     await close();
   }
