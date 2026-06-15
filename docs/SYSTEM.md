@@ -111,7 +111,7 @@ The prober, control plane, and verify workflow all read it.
 | Service    | URL            | Host                      | Box       | Mode        | p95 gate |
 | ---------- | -------------- | ------------------------- | --------- | ----------- | -------- |
 | tronswan   | tronswan.com   | DigitalOcean App Platform | white-box | post-deploy | 1500 ms  |
-| chomptron  | chomptron.com  | GCP Cloud Run             | white-box | post-deploy | 2500 ms  |
+| chomptron  | chomptron.com  | GCP Cloud Run             | white-box | post-deploy | 3000 ms  |
 | swantron   | swantron.com   | GitHub Pages (Hugo)       | black-box | post-deploy | 1500 ms  |
 | mt         | mt.services    | Firebase Hosting          | black-box | post-deploy | 1200 ms  |
 | wrenchtron | wrenchtron.com | Firebase Hosting          | black-box | post-deploy | 1800 ms  |

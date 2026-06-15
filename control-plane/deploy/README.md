@@ -63,10 +63,10 @@ registry's `expectedServiceName`.
 ## State & persistence
 
 The span buffer is in-memory and ephemeral (a restart clears it, which is fine —
-verification is per-run). Two things _are_ persisted under `control-plane/state/`
-(in `/opt/watchtron`, gitignored): the **last verdict per service**
-(`verdicts.json`) so the dashboard and `/badge` endpoints survive restarts
-instead of resetting to grey "unknown", the **rolling p95 history**
+verification is per-run). Three things _are_ persisted under
+`control-plane/state/` (in `/opt/watchtron`, gitignored): the **last verdict per
+service** (`verdicts.json`) so the dashboard and `/badge` endpoints survive
+restarts instead of resetting to grey "unknown", the **rolling p95 history**
 (`baselines.json`) backing regression detection, and the **verification history**
 (`history.json`) that supplies deploy markers to the blended uptime timeline.
 All survive the `git reset --hard` that `deploy-control-plane.yml` runs; only a

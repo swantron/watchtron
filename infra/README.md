@@ -7,10 +7,13 @@ Infrastructure-as-code for the watchtron control plane: a free-tier GCE
 
 ## What it manages
 
+- `google_project_service.required` — enables the APIs the control plane + its CD path need (`compute`, `oslogin`, `iap`, `cloudresourcemanager`); kept enabled on destroy.
 - `google_compute_address.watchtron` — static external IP (DNS A record target; survives instance replacement).
-- `google_compute_instance.watchtron` — `e2-micro` Debian 12; provisions Node 24 + Caddy + the service via `startup.sh.tftpl`.
+- `google_compute_instance.watchtron` — `e2-micro` Debian 12; provisions Node 24 + Caddy + the service via `startup.sh.tftpl`. Has `enable-oslogin = TRUE` so the CI SA can SSH in over IAP for control-plane CD.
 - `google_compute_firewall.web` — ingress 80/443 (Node's `:4318` stays loopback-only).
-- `google_compute_firewall.ssh` — optional; only created when `ssh_source_ranges` is non-empty.
+- `google_compute_firewall.iap_ssh` — ingress 22 from Google's IAP range (`35.235.240.0/20`) only; this is how `deploy-control-plane.yml` tunnels in. No public SSH surface.
+- `google_project_iam_member.ci_iap_tunnel` / `ci_os_admin_login` — grant the CI SA `roles/iap.tunnelResourceAccessor` + `roles/compute.osAdminLogin` so the deploy workflow can SSH + `sudo`. The SA email is auto-resolved from `GOOGLE_CREDENTIALS` in CI (`ci_service_account`); skipped when that var is empty (local plans).
+- `google_compute_firewall.ssh` — optional public SSH; only created when `ssh_source_ranges` is non-empty.
 
 `startup.sh.tftpl` is the source of truth for provisioning. Editing it changes
 the rendered script hash, which (via `replace_triggered_by`) replaces the
@@ -24,9 +27,14 @@ keeps pointing at the right place across replacements.
    `chomptron`:
    - `roles/compute.admin`
    - `roles/iam.serviceAccountUser` (to attach the default compute SA to the VM)
+   - `roles/serviceusage.serviceUsageAdmin` (so Terraform can enable the required APIs)
+   - `roles/resourcemanager.projectIamAdmin` (so Terraform can create the IAP / OS Login bindings)
 
    …and on the Terraform state bucket's project (`buildkite-infra-490603`):
    - `roles/storage.objectAdmin` on `gs://buildkite-infra-490603-tfstate`
+
+   > `serviceUsageAdmin` + `projectIamAdmin` are a privileged one-time bootstrap
+   > (a low-privilege SA can't grant them to itself); see `docs/SYSTEM.md` §8.
 
 2. **`WATCHTRON_TOKEN` repo secret** — already set; reused as `TF_VAR_watchtron_token`.
 3. DNS A record `watch.swantron.com` → the static IP (see adoption below).
