@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Loader + validator for the watchtron service registry.",
+  "license": "MIT",
   "main": "index.js",
   "exports": {
     ".": "./index.js"

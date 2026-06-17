@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "Fleet observability paved road: synthetic-traffic + OpenTelemetry verification that proves every deploy is live and serving real traffic.",
+  "license": "MIT",
+  "author": "Joe Swanson <joe@swantron.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/swantron/watchtron.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=24.0.0"

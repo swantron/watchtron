@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "watchtron control plane: OTLP/HTTP JSON receiver, ephemeral span buffer, verify API, status dashboard.",
+  "license": "MIT",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

@@ -1,6 +1,6 @@
 {
   "name": "@swantron/otel-bootstrap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drop-in OpenTelemetry bootstrap + synthetic-run-id middleware for white-box watchtron services. Dual CJS + ESM.",
   "license": "MIT",
   "author": "Joe Swanson <joe@swantron.com>",
@@ -38,12 +38,12 @@
     "README.md"
   ],
   "dependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
-    "@opentelemetry/instrumentation-express": "^0.55.0",
-    "@opentelemetry/instrumentation-http": "^0.205.0",
-    "@opentelemetry/resources": "^2.0.0",
-    "@opentelemetry/sdk-node": "^0.205.0",
-    "@opentelemetry/semantic-conventions": "^1.30.0"
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.219.0",
+    "@opentelemetry/instrumentation-express": "^0.67.0",
+    "@opentelemetry/instrumentation-http": "^0.219.0",
+    "@opentelemetry/resources": "^2.8.0",
+    "@opentelemetry/sdk-node": "^0.219.0",
+    "@opentelemetry/semantic-conventions": "^1.41.1"
   }
 }
