@@ -38,7 +38,7 @@ function start() {
   const { resourceFromAttributes } = require('@opentelemetry/resources');
   const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
   const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-  const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+  const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
   const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
   const { W3CTraceContextPropagator } = require('@opentelemetry/core');
   const { AsyncLocalStorageContextManager } = require('@opentelemetry/context-async-hooks');
@@ -54,12 +54,19 @@ function start() {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
 
+  // SimpleSpanProcessor exports each span the moment it ends -- while the request
+  // is still being handled and CPU is available. A BatchSpanProcessor defers
+  // export to a background timer, which on a scale-to-zero serverless host (Cloud
+  // Run) never fires: once the synthetic burst ends the container is throttled to
+  // ~0 CPU, the timer stalls, and the server spans never flush before /verify
+  // gives up. These services carry tiny traffic, so per-span export is cheap and
+  // makes white-box correlation deterministic.
   const provider = new NodeTracerProvider({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: serviceName,
       [ATTR_SERVICE_VERSION]: process.env.WATCHTRON_SERVICE_VERSION || '0.0.0',
     }),
-    spanProcessors: [new BatchSpanProcessor(exporter)],
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
   // Register as the global provider with an explicit context manager (so the
@@ -73,7 +80,17 @@ function start() {
   });
 
   registerInstrumentations({
-    instrumentations: [new HttpInstrumentation(), new ExpressInstrumentation()],
+    instrumentations: [
+      new HttpInstrumentation({
+        // watchtron only needs the inbound SERVER span to prove a request reached
+        // this origin -- it never uses outbound CLIENT spans. Suppressing all
+        // outgoing-request spans also kills the export feedback loop: otherwise
+        // each OTLP export POST becomes a CLIENT span that is itself exported,
+        // forever (instant + catastrophic under SimpleSpanProcessor).
+        ignoreOutgoingRequestHook: () => true,
+      }),
+      new ExpressInstrumentation(),
+    ],
   });
 
   const shutdown = () => {

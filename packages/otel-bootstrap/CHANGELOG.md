@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.2
+
+- **Export spans with `SimpleSpanProcessor` instead of `BatchSpanProcessor`.** On
+  a scale-to-zero serverless host (Cloud Run), the batch processor's background
+  flush timer stalls once the container is CPU-throttled after a request burst,
+  so server spans never reach the collector before watchtron's `/verify` window
+  closes (white-box `endToEnd` correlation silently fails). Per-span export fires
+  while the request is still in flight and CPU is available. These are tiny,
+  low-traffic services, so the cost is negligible.
+- **Stop tracing outgoing requests** (`ignoreOutgoingRequestHook: () => true`).
+  watchtron only needs the inbound SERVER span; suppressing CLIENT spans also
+  prevents an export feedback loop, where each OTLP export POST would itself be
+  traced and exported — fatal under per-span export.
+
 ## 0.1.1
 
 - **Drop `@opentelemetry/sdk-node`** for a hand-wired `NodeTracerProvider` +

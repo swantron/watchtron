@@ -1,6 +1,6 @@
 {
   "name": "@swantron/otel-bootstrap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drop-in OpenTelemetry bootstrap + synthetic-run-id middleware for white-box watchtron services. Dual CJS + ESM.",
   "license": "MIT",
   "author": "Joe Swanson <joe@swantron.com>",
