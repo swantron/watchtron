@@ -27,7 +27,7 @@ jobs:
       pull-requests: write # needed to post plan output as PR comment
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
@@ -77,7 +77,7 @@ jobs:
 
       - name: Post Plan to PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const output = `#### Terraform Plan \`${{ steps.plan.outcome }}\`

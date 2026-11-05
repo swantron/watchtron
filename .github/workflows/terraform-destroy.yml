@@ -29,7 +29,7 @@ jobs:
           echo "Confirmation input was '${{ github.event.inputs.confirm }}', expected 'destroy'. Aborting."
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
