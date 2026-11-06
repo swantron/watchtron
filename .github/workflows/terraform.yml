@@ -13,6 +13,9 @@ env:
   TF_VERSION: '1.14.8'
   TF_VAR_project_id: chomptron
   TF_VAR_watchtron_token: ${{ secrets.WATCHTRON_TOKEN }}
+  # The control-plane CD job SSHes in as this same SA (keyless, via WIF), so
+  # Terraform grants it IAP + osAdminLogin.
+  TF_VAR_ci_service_account: watchtron-tf@chomptron.iam.gserviceaccount.com
 
 defaults:
   run:
@@ -35,12 +38,6 @@ jobs:
         with:
           workload_identity_provider: projects/774854504205/locations/global/workloadIdentityPools/github/providers/github-oidc
           service_account: watchtron-tf@chomptron.iam.gserviceaccount.com
-      # The control-plane CD job SSHes in as this same SA, so grant it IAP +
-      # osAdminLogin via Terraform. Resolve its email from the key file the auth
-      # step wrote, so there's nothing extra to configure by hand.
-      - name: Resolve CI service account
-        run: echo "TF_VAR_ci_service_account=$(jq -r .client_email "$GOOGLE_APPLICATION_CREDENTIALS")" >> "$GITHUB_ENV"
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
