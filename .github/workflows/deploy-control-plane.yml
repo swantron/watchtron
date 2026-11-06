@@ -36,12 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
-
+          workload_identity_provider: projects/774854504205/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: watchtron-tf@chomptron.iam.gserviceaccount.com
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v3
 
